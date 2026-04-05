@@ -1,0 +1,12 @@
+.env
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+instance/
+client_secrets.json
+token.json
+token_store.json
+synced_jobs.json
+last_sync.txt
