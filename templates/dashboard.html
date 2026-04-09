@@ -5,196 +5,264 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>A&N Outdoor Services — Job Costing</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   <style>
-    *, body { font-family: 'Inter', sans-serif; }
+    :root {
+      --bg-deep:    #0b0e14;
+      --bg-surface: #12161f;
+      --bg-card:    #181d28;
+      --bg-hover:   #1e2433;
+      --border:     #252b3a;
+      --text-primary:   #f0f2f5;
+      --text-secondary: #8891a5;
+      --text-muted:     #555e71;
+      --green:  #00d68f;
+      --green-dim: rgba(0,214,143,.12);
+      --red:    #ff4d6a;
+      --red-dim: rgba(255,77,106,.12);
+      --blue:   #3b82f6;
+      --purple: #8b5cf6;
+      --amber:  #f59e0b;
+      --yellow-dim: rgba(245,158,11,.12);
+    }
 
-    /* ── Layout ─────────────────────────────────────────── */
-    body { background: #f1f5f9; color: #1e293b; }
+    *, body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      margin: 0; padding: 0;
+    }
+    body { background: var(--bg-deep); color: var(--text-primary); }
 
+    /* ── Sidebar ──────────────────────────────────────────── */
     .sidebar {
-      width: 240px;
-      min-height: 100vh;
-      background: #0f172a;
-      position: fixed;
-      top: 0; left: 0;
-      display: flex;
-      flex-direction: column;
+      width: 220px; min-height: 100vh;
+      background: var(--bg-surface);
+      border-right: 1px solid var(--border);
+      position: fixed; top: 0; left: 0;
+      display: flex; flex-direction: column;
       z-index: 100;
     }
-    .sidebar-brand {
-      padding: 28px 24px 20px;
-      border-bottom: 1px solid #1e293b;
-    }
-    .sidebar-brand .company { font-size: 15px; font-weight: 700; color: #f8fafc; letter-spacing: .3px; }
-    .sidebar-brand .subtitle { font-size: 11px; color: #64748b; margin-top: 2px; text-transform: uppercase; letter-spacing: 1px; }
+    .sidebar-brand { padding: 28px 20px 22px; }
     .sidebar-logo {
-      width: 36px; height: 36px;
-      background: #22c55e;
-      border-radius: 8px;
+      width: 34px; height: 34px; border-radius: 10px;
+      background: linear-gradient(135deg, var(--green), #00b37a);
       display: flex; align-items: center; justify-content: center;
-      font-weight: 800; font-size: 16px; color: #fff;
-      margin-bottom: 12px;
+      font-weight: 900; font-size: 15px; color: #fff;
+      margin-bottom: 14px;
+      box-shadow: 0 0 20px rgba(0,214,143,.25);
     }
-    .sidebar-nav { padding: 16px 12px; flex: 1; }
-    .nav-label { font-size: 10px; color: #475569; text-transform: uppercase; letter-spacing: 1px; padding: 0 12px; margin-bottom: 6px; }
+    .sidebar-brand .company { font-size: 14px; font-weight: 800; color: var(--text-primary); letter-spacing: .2px; }
+    .sidebar-brand .subtitle { font-size: 10px; color: var(--text-muted); margin-top: 3px; text-transform: uppercase; letter-spacing: 1.5px; }
+    .sidebar-nav { padding: 8px 10px; flex: 1; }
+    .nav-label { font-size: 9px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1.5px; padding: 0 10px; margin-bottom: 8px; margin-top: 8px; }
     .nav-item a {
       display: flex; align-items: center; gap: 10px;
-      padding: 9px 12px; border-radius: 8px;
-      color: #94a3b8; font-size: 14px; font-weight: 500;
+      padding: 10px 12px; border-radius: 10px;
+      color: var(--text-secondary); font-size: 13px; font-weight: 500;
       text-decoration: none; transition: all .15s;
     }
-    .nav-item a:hover, .nav-item a.active {
-      background: #1e293b; color: #f1f5f9;
-    }
-    .nav-item a.active { color: #22c55e; }
-    .nav-icon { font-size: 16px; width: 20px; text-align: center; }
+    .nav-item a:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .nav-item a.active { background: rgba(0,214,143,.08); color: var(--green); }
+    .nav-icon { font-size: 15px; width: 18px; text-align: center; }
     .sidebar-footer {
-      padding: 16px 24px;
-      border-top: 1px solid #1e293b;
-      font-size: 12px; color: #475569;
+      padding: 14px 20px; border-top: 1px solid var(--border);
+      font-size: 11px; color: var(--text-muted);
     }
 
-    .main-content {
-      margin-left: 240px;
-      padding: 32px;
-      min-height: 100vh;
-    }
+    .main-content { margin-left: 220px; padding: 28px 32px; min-height: 100vh; }
 
-    /* ── Page header ─────────────────────────────────────── */
-    .page-header { margin-bottom: 28px; }
-    .page-header h1 { font-size: 26px; font-weight: 800; color: #0f172a; margin: 0; }
-    .page-header .sub { font-size: 14px; color: #64748b; margin-top: 4px; }
+    /* ── Page header ──────────────────────────────────────── */
+    .page-header { margin-bottom: 24px; }
+    .page-header h1 { font-size: 24px; font-weight: 900; color: var(--text-primary); margin: 0; }
+    .page-header .sub { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
     .badge-month {
       display: inline-block;
-      background: #e0f2fe; color: #0369a1;
-      font-size: 12px; font-weight: 600;
-      padding: 3px 10px; border-radius: 20px;
-      margin-left: 10px; vertical-align: middle;
+      background: rgba(59,130,246,.12); color: var(--blue);
+      font-size: 11px; font-weight: 700;
+      padding: 3px 10px; border-radius: 6px;
+      margin-left: 8px; vertical-align: middle;
     }
+    .btn-refresh {
+      background: var(--bg-card); border: 1px solid var(--border);
+      color: var(--text-secondary); font-size: 12px; font-weight: 600;
+      padding: 6px 14px; border-radius: 8px;
+      text-decoration: none; transition: all .15s;
+    }
+    .btn-refresh:hover { background: var(--bg-hover); color: var(--text-primary); }
 
     /* ── Metric cards ─────────────────────────────────────── */
     .metric-card {
-      background: #fff;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
       border-radius: 14px;
-      padding: 24px;
-      box-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 12px rgba(0,0,0,.04);
+      padding: 22px 24px;
       height: 100%;
       position: relative;
       overflow: hidden;
+      transition: border-color .2s, box-shadow .2s;
     }
-    .metric-card::before {
-      content: '';
-      position: absolute;
-      top: 0; left: 0; right: 0;
-      height: 3px;
-      background: var(--card-accent, #6366f1);
-      border-radius: 14px 14px 0 0;
+    .metric-card:hover {
+      border-color: #333a4d;
+      box-shadow: 0 4px 24px rgba(0,0,0,.2);
     }
-    .metric-label { font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: .8px; }
-    .metric-value { font-size: 34px; font-weight: 800; color: #0f172a; margin: 8px 0 4px; line-height: 1; }
-    .metric-value.green { color: #16a34a; }
-    .metric-value.red   { color: #dc2626; }
-    .metric-sub { font-size: 13px; color: #94a3b8; }
-    .metric-icon {
-      position: absolute; top: 20px; right: 20px;
-      font-size: 28px; opacity: .12;
+    .metric-card .accent-bar {
+      position: absolute; bottom: 0; left: 24px; right: 24px;
+      height: 3px; border-radius: 3px 3px 0 0;
     }
+    .metric-label { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; }
+    .metric-value { font-size: 36px; font-weight: 900; color: var(--text-primary); margin: 6px 0 4px; line-height: 1; letter-spacing: -1px; }
+    .metric-value.green { color: var(--green); }
+    .metric-value.red   { color: var(--red); }
+    .metric-sub { font-size: 12px; color: var(--text-muted); }
 
-    /* ── Section headers ─────────────────────────────────── */
+    /* ── Section headers ──────────────────────────────────── */
     .section-title {
-      font-size: 14px; font-weight: 700; color: #0f172a;
-      text-transform: uppercase; letter-spacing: .8px;
-      margin-bottom: 16px; margin-top: 36px;
-      display: flex; align-items: center; gap: 10px;
+      font-size: 11px; font-weight: 700; color: var(--text-muted);
+      text-transform: uppercase; letter-spacing: 1.5px;
+      margin-bottom: 14px; margin-top: 36px;
+      display: flex; align-items: center; gap: 12px;
     }
-    .section-title::after {
-      content: ''; flex: 1;
-      height: 1px; background: #e2e8f0;
-    }
+    .section-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
 
     /* ── Crew cards ──────────────────────────────────────── */
     .crew-card {
-      background: #fff;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
       border-radius: 14px;
-      padding: 24px;
-      box-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 12px rgba(0,0,0,.04);
+      padding: 22px;
       height: 100%;
+      transition: border-color .2s, transform .15s;
+      position: relative;
     }
-    .crew-name {
-      font-size: 18px; font-weight: 800; color: #0f172a;
-      margin-bottom: 16px;
-      display: flex; align-items: center; justify-content: space-between;
+    .crew-card:hover { border-color: #333a4d; transform: translateY(-2px); }
+    .crew-card.crew-leader { border-color: var(--green); box-shadow: 0 0 24px rgba(0,214,143,.08); }
+    .crew-card.crew-leader::after {
+      content: 'TOP'; position: absolute; top: 12px; right: 14px;
+      font-size: 9px; font-weight: 800; letter-spacing: 1px;
+      background: var(--green-dim); color: var(--green);
+      padding: 2px 8px; border-radius: 4px;
     }
+    .crew-name-text { font-size: 17px; font-weight: 800; color: var(--text-primary); }
     .margin-badge {
-      font-size: 13px; font-weight: 700;
-      padding: 4px 12px; border-radius: 20px;
+      font-size: 12px; font-weight: 700;
+      padding: 3px 10px; border-radius: 6px;
     }
-    .margin-badge.good  { background: #dcfce7; color: #16a34a; }
-    .margin-badge.bad   { background: #fee2e2; color: #dc2626; }
-    .margin-badge.na    { background: #f1f5f9; color: #94a3b8; }
-    .crew-stat { margin-bottom: 12px; }
-    .crew-stat-label { font-size: 11px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: .7px; }
-    .crew-stat-value { font-size: 22px; font-weight: 800; color: #1e293b; margin-top: 1px; }
-    .crew-stat-value.sm { font-size: 17px; }
+    .margin-badge.good  { background: var(--green-dim); color: var(--green); }
+    .margin-badge.bad   { background: var(--red-dim); color: var(--red); }
+    .margin-badge.na    { background: var(--bg-hover); color: var(--text-muted); }
+    .crew-stat { margin-bottom: 10px; }
+    .crew-stat-label { font-size: 10px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .8px; }
+    .crew-stat-value { font-size: 20px; font-weight: 800; color: var(--text-primary); margin-top: 1px; }
+    .crew-stat-value.sm { font-size: 16px; }
+    .margin-bar-track { background: var(--bg-deep); border-radius: 4px; height: 6px; position: relative; overflow: hidden; }
+    .margin-bar-fill { height: 100%; border-radius: 4px; transition: width .6s ease; }
+    .margin-bar-target { position: absolute; top: 0; left: 45%; width: 2px; height: 100%; background: var(--text-muted); opacity: .4; }
 
-    /* ── Chart cards ─────────────────────────────────────── */
+    /* ── Chart cards ──────────────────────────────────────── */
     .chart-card {
-      background: #fff;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
       border-radius: 14px;
-      padding: 24px;
-      box-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 12px rgba(0,0,0,.04);
+      padding: 22px;
       height: 100%;
     }
-    .chart-title { font-size: 14px; font-weight: 700; color: #0f172a; margin-bottom: 16px; }
+    .chart-title { font-size: 13px; font-weight: 700; color: var(--text-secondary); margin-bottom: 14px; }
+
+    /* ── Week accordion ──────────────────────────────────── */
+    .week-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      margin-bottom: 8px;
+      overflow: hidden;
+      transition: border-color .15s;
+    }
+    .week-card:hover { border-color: #333a4d; }
+    .week-header {
+      padding: 14px 20px;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; flex-wrap: wrap;
+      transition: background .15s;
+    }
+    .week-header:hover { background: var(--bg-hover); }
+    .week-label { font-size: 14px; font-weight: 800; color: var(--text-primary); min-width: 170px; }
+    .week-metrics { display: flex; gap: 18px; flex-wrap: wrap; align-items: center; }
+    .week-metric { text-align: center; min-width: 70px; }
+    .week-metric-label { font-size: 9px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .8px; }
+    .week-metric-value { font-size: 15px; font-weight: 800; color: var(--text-primary); margin-top: 1px; }
+    .week-metric-value.sm { font-size: 13px; }
+    .week-chevron { font-size: 14px; color: var(--text-muted); transition: transform .2s; }
+    .week-card.open .week-chevron { transform: rotate(180deg); }
+    .week-detail { display: none; border-top: 1px solid var(--border); }
+    .week-card.open .week-detail { display: block; }
+    .week-detail table { background: transparent; --bs-table-bg: transparent; --bs-table-hover-bg: var(--bg-hover); color: var(--text-secondary); }
+    .week-detail thead th {
+      background: var(--bg-surface) !important; color: var(--text-muted) !important;
+      font-size: 10px !important; border-color: var(--border) !important;
+      padding: 8px 14px !important;
+    }
+    .week-detail tbody td {
+      border-color: var(--border) !important;
+      padding: 7px 14px !important;
+      color: var(--text-secondary) !important;
+      font-size: 12px !important;
+    }
 
     /* ── Table ───────────────────────────────────────────── */
     .jobs-table-wrap {
-      background: #fff;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
       border-radius: 14px;
-      box-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 12px rgba(0,0,0,.04);
       overflow: hidden;
     }
-    .jobs-table-wrap table { margin: 0; font-size: 13px; }
+    .jobs-table-wrap table { margin: 0; font-size: 12px; background: transparent; --bs-table-bg: transparent; --bs-table-hover-bg: var(--bg-hover); --bs-table-striped-bg: transparent; color: var(--text-secondary); }
     .jobs-table-wrap thead th {
-      background: #f8fafc; color: #475569;
-      font-size: 11px; font-weight: 700;
-      text-transform: uppercase; letter-spacing: .7px;
-      border-bottom: 2px solid #e2e8f0;
-      padding: 12px 16px;
+      background: var(--bg-surface); color: var(--text-muted);
+      font-size: 10px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .8px;
+      border-bottom: 1px solid var(--border);
+      padding: 12px 14px; white-space: nowrap;
     }
-    .jobs-table-wrap tbody td { padding: 11px 16px; vertical-align: middle; border-color: #f1f5f9; }
-    .row-good { background: #f0fdf4 !important; }
-    .row-bad  { background: #fff5f5 !important; }
-    .row-pending { background: #fefce8 !important; }
+    .jobs-table-wrap tbody tr { transition: background .1s; }
+    .jobs-table-wrap tbody tr:hover { background: var(--bg-hover) !important; }
+    .jobs-table-wrap tbody td {
+      padding: 10px 14px; vertical-align: middle;
+      border-color: var(--border);
+      color: var(--text-secondary);
+    }
+    .row-good { background: rgba(0,214,143,.04) !important; }
+    .row-bad  { background: rgba(255,77,106,.04) !important; }
+    .row-pending { background: rgba(245,158,11,.04) !important; }
+
     .pill {
       display: inline-block;
-      padding: 2px 9px; border-radius: 12px;
+      padding: 3px 10px; border-radius: 6px;
       font-size: 11px; font-weight: 700;
     }
-    .pill-green { background: #dcfce7; color: #16a34a; }
-    .pill-red   { background: #fee2e2; color: #dc2626; }
-    .pill-yellow{ background: #fef9c3; color: #92400e; }
+    .pill-green { background: var(--green-dim); color: var(--green); }
+    .pill-red   { background: var(--red-dim); color: var(--red); }
+    .pill-yellow{ background: var(--yellow-dim); color: var(--amber); }
+
     .crew-dot {
       display: inline-block;
-      width: 8px; height: 8px;
-      border-radius: 50%; margin-right: 6px;
+      width: 7px; height: 7px;
+      border-radius: 50%; margin-right: 5px;
     }
+    .val-positive { font-weight: 700; color: var(--green); }
+    .val-negative { font-weight: 700; color: var(--red); }
+    .val-muted { color: var(--text-muted); }
 
     /* ── Responsive ──────────────────────────────────────── */
     @media (max-width: 991px) {
-      .sidebar { width: 100%; min-height: auto; position: relative; flex-direction: row; flex-wrap: wrap; }
+      .sidebar { width: 100%; min-height: auto; position: relative; flex-direction: row; flex-wrap: wrap; border-right: none; border-bottom: 1px solid var(--border); }
       .main-content { margin-left: 0; padding: 16px; }
       .sidebar-nav { display: none; }
+      .sidebar-brand { padding: 16px 20px; }
     }
 
-    /* ── Error state ─────────────────────────────────────── */
-    .error-state {
-      text-align: center; padding: 80px 20px;
-      color: #64748b;
-    }
-    .error-state h2 { font-size: 22px; font-weight: 700; color: #0f172a; margin-bottom: 8px; }
+    .error-state { text-align: center; padding: 80px 20px; color: var(--text-muted); }
+    .error-state h2 { font-size: 22px; font-weight: 800; color: var(--text-primary); margin-bottom: 8px; }
   </style>
 </head>
 <body>
@@ -203,119 +271,149 @@
 <div class="sidebar">
   <div class="sidebar-brand">
     <div class="sidebar-logo">A</div>
-    <div class="company">A&N Outdoor Services</div>
-    <div class="subtitle">Job Costing Dashboard</div>
+    <div class="company">A&N Outdoor</div>
+    <div class="subtitle">Job Costing</div>
   </div>
   <nav class="sidebar-nav">
-    <div class="nav-label">Menu</div>
+    <div class="nav-label">Main</div>
     <ul class="nav flex-column gap-1">
-      <li class="nav-item">
-        <a href="/dashboard" class="active">
-          <span class="nav-icon">📊</span> Dashboard
-        </a>
-      </li>
-      <li class="nav-item">
-        <a href="/sync-now">
-          <span class="nav-icon">🔄</span> Run Sync
-        </a>
-      </li>
-      <li class="nav-item">
-        <a href="/reconcile-now">
-          <span class="nav-icon">⚙️</span> Reconcile Overhead
-        </a>
-      </li>
-      <li class="nav-item">
-        <a href="/">
-          <span class="nav-icon">🏠</span> Home
-        </a>
-      </li>
+      <li class="nav-item"><a href="/dashboard" class="active"><span class="nav-icon">📊</span> Dashboard</a></li>
+      <li class="nav-item"><a href="/sync-now"><span class="nav-icon">🔄</span> Run Sync</a></li>
+      <li class="nav-item"><a href="/reconcile-now"><span class="nav-icon">⚙️</span> Reconcile</a></li>
+      <li class="nav-item"><a href="/backfill"><span class="nav-icon">📥</span> Backfill</a></li>
+      <li class="nav-item"><a href="/"><span class="nav-icon">🏠</span> Home</a></li>
     </ul>
   </nav>
-  <div class="sidebar-footer">
-    {% if data %}Last updated {{ data.last_updated }}{% endif %}
-  </div>
+  <div class="sidebar-footer">{% if data %}Updated {{ data.last_updated }}{% endif %}</div>
 </div>
 
-<!-- Main content -->
 <div class="main-content">
-
   {% if not data %}
   <div class="error-state">
-    <div style="font-size:48px;margin-bottom:16px">📭</div>
+    <div style="font-size:48px;margin-bottom:16px;opacity:.6">📭</div>
     <h2>No data available</h2>
     <p>The Google Sheet is empty or not accessible.<br>
-       <a href="/sync-now" style="color:#22c55e;font-weight:600">Run a sync first</a> to pull jobs from Jobber.</p>
+       <a href="/sync-now" style="color:var(--green);font-weight:600">Run a sync first</a></p>
   </div>
-
   {% else %}
 
-  <!-- Page header -->
+  <!-- Header -->
   <div class="page-header d-flex align-items-start justify-content-between flex-wrap gap-3">
     <div>
       <h1>Job Costing <span class="badge-month">{{ data.month_label }}</span></h1>
-      <div class="sub">Pulled live from your Google Sheet · {{ data.recent_jobs|length }} jobs total</div>
+      <div class="sub">Live from Google Sheets · {{ data.recent_jobs|length }} recent jobs</div>
     </div>
-    <a href="/dashboard" class="btn btn-sm btn-outline-secondary">↻ Refresh</a>
+    <a href="/dashboard" class="btn-refresh">↻ Refresh</a>
   </div>
 
-  <!-- Summary cards -->
+  <!-- KPI Cards -->
   <div class="row g-3">
     <div class="col-6 col-xl-3">
-      <div class="metric-card" style="--card-accent:#6366f1">
+      <div class="metric-card">
         <div class="metric-label">Total Revenue</div>
-        <div class="metric-value">${{ "${:,.0f}".format(data.month_revenue) }}</div>
+        <div class="metric-value">${{ "{:,.0f}".format(data.month_revenue) }}</div>
         <div class="metric-sub">{{ data.month_label }}</div>
-        <div class="metric-icon">💰</div>
+        <div class="accent-bar" style="background:var(--blue)"></div>
       </div>
     </div>
     <div class="col-6 col-xl-3">
-      <div class="metric-card" style="--card-accent:#0ea5e9">
+      <div class="metric-card">
         <div class="metric-label">Jobs Closed</div>
         <div class="metric-value">{{ data.month_job_count }}</div>
         <div class="metric-sub">This month</div>
-        <div class="metric-icon">✅</div>
+        <div class="accent-bar" style="background:var(--purple)"></div>
       </div>
     </div>
     <div class="col-6 col-xl-3">
-      <div class="metric-card" style="--card-accent:{% if data.avg_gross_margin is not none and data.avg_gross_margin >= 45 %}#22c55e{% elif data.avg_gross_margin is none %}#94a3b8{% else %}#ef4444{% endif %}">
+      <div class="metric-card">
         <div class="metric-label">Avg Gross Margin</div>
         <div class="metric-value {% if data.avg_gross_margin is not none %}{% if data.avg_gross_margin >= 45 %}green{% else %}red{% endif %}{% endif %}">
           {% if data.avg_gross_margin is not none %}{{ data.avg_gross_margin }}%{% else %}—{% endif %}
         </div>
         <div class="metric-sub">Target: 45%</div>
-        <div class="metric-icon">📈</div>
+        <div class="accent-bar" style="background:{% if data.avg_gross_margin is not none and data.avg_gross_margin >= 45 %}var(--green){% elif data.avg_gross_margin is none %}var(--text-muted){% else %}var(--red){% endif %}"></div>
       </div>
     </div>
     <div class="col-6 col-xl-3">
-      <div class="metric-card" style="--card-accent:{% if data.avg_net_margin is not none and data.avg_net_margin >= 15 %}#22c55e{% elif data.avg_net_margin is none %}#94a3b8{% else %}#ef4444{% endif %}">
+      <div class="metric-card">
         <div class="metric-label">Avg Net Margin</div>
         <div class="metric-value {% if data.avg_net_margin is not none %}{% if data.avg_net_margin >= 15 %}green{% else %}red{% endif %}{% endif %}">
           {% if data.avg_net_margin is not none %}{{ data.avg_net_margin }}%{% else %}—{% endif %}
         </div>
         <div class="metric-sub">Target: 15%</div>
-        <div class="metric-icon">💹</div>
+        <div class="accent-bar" style="background:{% if data.avg_net_margin is not none and data.avg_net_margin >= 15 %}var(--green){% elif data.avg_net_margin is none %}var(--text-muted){% else %}var(--red){% endif %}"></div>
       </div>
     </div>
   </div>
 
-  <!-- Crew leaderboard -->
+  <!-- Hours KPI Cards -->
+  <div class="row g-3 mt-1">
+    <div class="col-6 col-xl-3">
+      <div class="metric-card">
+        <div class="metric-label">Estimated Hours</div>
+        <div class="metric-value">{{ data.total_estimated_hours }}</div>
+        <div class="metric-sub">{{ data.jobs_with_estimates }} jobs with estimates</div>
+        <div class="accent-bar" style="background:var(--amber)"></div>
+      </div>
+    </div>
+    <div class="col-6 col-xl-3">
+      <div class="metric-card">
+        <div class="metric-label">Actual Hours</div>
+        <div class="metric-value">{{ data.total_labor_hours }}</div>
+        <div class="metric-sub">From timesheets</div>
+        <div class="accent-bar" style="background:var(--blue)"></div>
+      </div>
+    </div>
+    <div class="col-6 col-xl-3">
+      <div class="metric-card">
+        <div class="metric-label">Efficiency Rate</div>
+        <div class="metric-value {% if data.total_estimated_hours > 0 and data.total_labor_hours > 0 %}{% if data.total_estimated_hours / data.total_labor_hours >= 1 %}green{% else %}red{% endif %}{% endif %}">
+          {% if data.total_estimated_hours > 0 and data.total_labor_hours > 0 %}
+            {{ "{:.0f}".format(data.total_estimated_hours / data.total_labor_hours * 100) }}%
+          {% else %}
+            —
+          {% endif %}
+        </div>
+        <div class="metric-sub">Est. / Actual (100%+ = under budget)</div>
+        <div class="accent-bar" style="background:{% if data.total_estimated_hours > 0 and data.total_labor_hours > 0 %}{% if data.total_estimated_hours / data.total_labor_hours >= 1 %}var(--green){% else %}var(--red){% endif %}{% else %}var(--text-muted){% endif %}"></div>
+      </div>
+    </div>
+    <div class="col-6 col-xl-3">
+      <div class="metric-card">
+        <div class="metric-label">Revenue / Hour</div>
+        <div class="metric-value">
+          {% if data.total_labor_hours > 0 %}
+            ${{ "{:,.0f}".format(data.month_revenue / data.total_labor_hours) }}
+          {% else %}
+            —
+          {% endif %}
+        </div>
+        <div class="metric-sub">{{ data.month_label }}</div>
+        <div class="accent-bar" style="background:var(--purple)"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Crew Leaderboard -->
   <div class="section-title">Crew Leaderboard</div>
+  {% set crew_colors = {"Ernesto": "#8b5cf6", "Arturo": "#3b82f6", "Gonzalo": "#f59e0b", "Other": "#555e71"} %}
+  {% set best_margin = [] %}
+  {% for crew in data.crews %}{% set s = data.crew_stats[crew] %}{% if s.avg_gross_margin is not none %}{% if not best_margin or s.avg_gross_margin > best_margin[0] %}{% if best_margin.append(s.avg_gross_margin) or best_margin.__delitem__(0) is none %}{% endif %}{% elif best_margin %}{% endif %}{% endif %}{% endfor %}
   <div class="row g-3">
-    {% set crew_colors = {"Ernesto": "#6366f1", "Arturo": "#0ea5e9", "Gonzalo": "#f59e0b", "Other": "#94a3b8"} %}
     {% for crew in data.crews %}
     {% set s = data.crew_stats[crew] %}
+    {% set is_leader = s.avg_gross_margin is not none and best_margin and s.avg_gross_margin == best_margin[0] and s.jobs > 0 %}
     <div class="col-12 col-md-6 col-xl-3">
-      <div class="crew-card">
-        <div class="crew-name">
+      <div class="crew-card {% if is_leader %}crew-leader{% endif %}">
+        <div class="d-flex align-items-center justify-content-between mb-3">
           <span>
-            <span class="crew-dot" style="background:{{ crew_colors[crew] }}"></span>{{ crew }}
+            <span class="crew-dot" style="background:{{ crew_colors[crew] }}"></span>
+            <span class="crew-name-text">{{ crew }}</span>
           </span>
           {% if s.avg_gross_margin is not none %}
-            <span class="margin-badge {% if s.avg_gross_margin >= 45 %}good{% else %}bad{% endif %}">
-              {{ s.avg_gross_margin }}%
-            </span>
+            <span class="margin-badge {% if s.avg_gross_margin >= 45 %}good{% else %}bad{% endif %}">{{ s.avg_gross_margin }}%</span>
           {% else %}
-            <span class="margin-badge na">No data</span>
+            <span class="margin-badge na">—</span>
           {% endif %}
         </div>
         <div class="row g-2">
@@ -328,27 +426,24 @@
           <div class="col-6">
             <div class="crew-stat">
               <div class="crew-stat-label">Revenue</div>
-              <div class="crew-stat-value sm">${{ "${:,.0f}".format(s.revenue) }}</div>
+              <div class="crew-stat-value sm">${{ "{:,.0f}".format(s.revenue) }}</div>
             </div>
           </div>
           <div class="col-12">
             <div class="crew-stat">
-              <div class="crew-stat-label">Avg Revenue / Visit Day</div>
-              <div class="crew-stat-value sm">
-                {% if s.avg_rev_per_day is not none %}${{ "${:,.0f}".format(s.avg_rev_per_day) }}{% else %}—{% endif %}
-              </div>
+              <div class="crew-stat-label">Avg Rev / Visit Day</div>
+              <div class="crew-stat-value sm">{% if s.avg_rev_per_day is not none %}${{ "{:,.0f}".format(s.avg_rev_per_day) }}{% else %}—{% endif %}</div>
             </div>
           </div>
         </div>
-        <!-- Mini margin bar -->
         {% if s.avg_gross_margin is not none %}
-        <div style="margin-top:16px">
-          <div style="display:flex;justify-content:space-between;font-size:11px;color:#94a3b8;margin-bottom:4px">
-            <span>Gross Margin</span><span>Target 45%</span>
+        <div style="margin-top:14px">
+          <div class="d-flex justify-content-between" style="font-size:10px;color:var(--text-muted);margin-bottom:3px">
+            <span>Gross Margin</span><span>45% target</span>
           </div>
-          <div style="background:#f1f5f9;border-radius:6px;height:8px;position:relative;overflow:hidden">
-            <div style="width:{{ [s.avg_gross_margin, 100]|min }}%;height:100%;border-radius:6px;background:{% if s.avg_gross_margin >= 45 %}#22c55e{% else %}#ef4444{% endif %};transition:width .5s"></div>
-            <div style="position:absolute;top:0;left:45%;width:2px;height:100%;background:#cbd5e1"></div>
+          <div class="margin-bar-track">
+            <div class="margin-bar-fill" style="width:{{ [s.avg_gross_margin, 100]|min }}%;background:{% if s.avg_gross_margin >= 45 %}var(--green){% else %}var(--red){% endif %}"></div>
+            <div class="margin-bar-target"></div>
           </div>
         </div>
         {% endif %}
@@ -357,12 +452,79 @@
     {% endfor %}
   </div>
 
-  <!-- Charts row 1 -->
-  <div class="section-title">Performance Charts</div>
+  <!-- Week by Week -->
+  <div class="section-title">Week by Week</div>
+  {% for week in data.weeks %}
+  <div class="week-card" onclick="this.classList.toggle('open')">
+    <div class="week-header">
+      <span class="week-label">{{ week.label }}</span>
+      <div class="week-metrics">
+        <div class="week-metric">
+          <div class="week-metric-label">Revenue</div>
+          <div class="week-metric-value">${{ "{:,.0f}".format(week.revenue) }}</div>
+        </div>
+        <div class="week-metric">
+          <div class="week-metric-label">Cost</div>
+          <div class="week-metric-value sm">{% if week.total_cost is not none %}${{ "{:,.0f}".format(week.total_cost) }}{% else %}<span class="val-muted">—</span>{% endif %}</div>
+        </div>
+        <div class="week-metric">
+          <div class="week-metric-label">Gross P.</div>
+          <div class="week-metric-value sm">${{ "{:,.0f}".format(week.gross_profit) }}</div>
+        </div>
+        <div class="week-metric">
+          <div class="week-metric-label">GM%</div>
+          <div class="week-metric-value sm {% if week.gross_margin is not none %}{% if week.gross_margin >= 45 %}green{% else %}red{% endif %}{% endif %}">
+            {% if week.gross_margin is not none %}{{ week.gross_margin }}%{% else %}—{% endif %}
+          </div>
+        </div>
+        <div class="week-metric">
+          <div class="week-metric-label">Net P.</div>
+          <div class="week-metric-value sm {% if week.net_profit is not none %}{% if week.net_profit >= 0 %}green{% else %}red{% endif %}{% endif %}">
+            {% if week.net_profit is not none %}${{ "{:,.0f}".format(week.net_profit) }}{% else %}<span class="val-muted">—</span>{% endif %}
+          </div>
+        </div>
+        <div class="week-metric">
+          <div class="week-metric-label">NM%</div>
+          <div class="week-metric-value sm {% if week.net_margin is not none %}{% if week.net_margin >= 15 %}green{% else %}red{% endif %}{% endif %}">
+            {% if week.net_margin is not none %}{{ week.net_margin }}%{% else %}—{% endif %}
+          </div>
+        </div>
+        <div class="week-metric">
+          <div class="week-metric-label">Jobs</div>
+          <div class="week-metric-value sm">{{ week.jobs }}</div>
+        </div>
+      </div>
+      <span class="week-chevron">▾</span>
+    </div>
+    <div class="week-detail">
+      <table class="table table-sm mb-0">
+        <thead><tr>
+          <th>Date</th><th>Client</th><th>Crew</th><th>Revenue</th><th>Cost</th><th>GM%</th><th>Net Profit</th>
+        </tr></thead>
+        <tbody>
+          {% for j in week.job_list %}
+          <tr>
+            <td>{{ j.close_date_str }}</td>
+            <td style="font-weight:600;color:var(--text-primary)">{{ j.client }}</td>
+            <td><span class="crew-dot" style="background:{{ crew_colors.get(j.crew, '#555e71') }}"></span>{{ j.crew }}</td>
+            <td style="font-weight:700;color:var(--text-primary)">${{ "{:,.0f}".format(j.revenue) }}</td>
+            <td>{% if j.total_job_cost is not none %}${{ "{:,.0f}".format(j.total_job_cost) }}{% else %}<span class="pill pill-yellow">Pending</span>{% endif %}</td>
+            <td>{% if j.gross_margin_pct is not none %}<span class="pill {% if j.gross_margin_pct >= 45 %}pill-green{% else %}pill-red{% endif %}">{{ j.gross_margin_pct }}%</span>{% else %}<span class="pill pill-yellow">Pending</span>{% endif %}</td>
+            <td>{% if j.net_profit is not none %}<span class="{% if j.net_profit >= 0 %}val-positive{% else %}val-negative{% endif %}">${{ "{:,.0f}".format(j.net_profit) }}</span>{% else %}<span class="pill pill-yellow">Pending</span>{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endfor %}
+
+  <!-- Charts -->
+  <div class="section-title">Performance</div>
   <div class="row g-3">
     <div class="col-12 col-lg-5">
       <div class="chart-card">
-        <div class="chart-title">Gross Margin % by Crew — {{ data.month_label }}</div>
+        <div class="chart-title">Gross Margin by Crew — {{ data.month_label }}</div>
         <canvas id="crewMarginChart" height="200"></canvas>
       </div>
     </div>
@@ -373,79 +535,44 @@
       </div>
     </div>
   </div>
-
-  <!-- Chart row 2 -->
   <div class="row g-3 mt-0">
-    <div class="col-12">
-      <div class="chart-card">
-        <div class="chart-title">Jobs Closed per Week — Last 8 Weeks</div>
-        <canvas id="weeklyJobsChart" height="100"></canvas>
+    <div class="col-12 col-lg-5">
+      <div class="chart-card" style="padding:16px 20px">
+        <div class="chart-title" style="font-size:11px;color:var(--text-muted)">Jobs / Week — 8 Weeks</div>
+        <canvas id="weeklyJobsChart" height="55"></canvas>
       </div>
     </div>
   </div>
 
-  <!-- Recent jobs table -->
+  <!-- Recent Jobs Table -->
   <div class="section-title">Recent Jobs</div>
   <div class="jobs-table-wrap">
     <div class="table-responsive">
-      <table class="table table-hover">
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Client</th>
-            <th>Crew</th>
-            <th>Revenue</th>
-            <th>Total Cost</th>
-            <th>Gross Margin</th>
-            <th>Net Margin</th>
-            <th>Flag</th>
-          </tr>
-        </thead>
+      <table class="table table-hover mb-0">
+        <thead><tr>
+          <th>Date</th><th>Client</th><th>Crew</th><th>Revenue</th><th>Cost</th>
+          <th>Gross Margin</th><th>Net Profit</th><th>Net Margin</th>
+          <th>Est. Hrs</th><th>Efficiency</th><th></th>
+        </tr></thead>
         <tbody>
           {% for job in data.recent_jobs %}
           {% set is_pending = job.gross_margin_pct is none %}
           {% set is_good = not is_pending and job.gross_margin_pct >= 45 %}
           <tr class="{% if is_pending %}row-pending{% elif is_good %}row-good{% else %}row-bad{% endif %}">
-            <td style="color:#64748b;white-space:nowrap">{{ job.close_date_str }}</td>
-            <td style="font-weight:600">{{ job.client }}</td>
-            <td>
-              <span class="crew-dot" style="background:{{ {'Ernesto':'#6366f1','Arturo':'#0ea5e9','Gonzalo':'#f59e0b','Other':'#94a3b8'}.get(job.crew, '#94a3b8') }}"></span>
-              {{ job.crew }}
-            </td>
-            <td style="font-weight:700">${{ "${:,.0f}".format(job.revenue) }}</td>
-            <td>
-              {% if job.total_job_cost is not none %}
-                ${{ "${:,.0f}".format(job.total_job_cost) }}
-              {% else %}
-                <span class="pill pill-yellow">Pending</span>
-              {% endif %}
-            </td>
-            <td>
-              {% if job.gross_margin_pct is not none %}
-                <span class="pill {% if job.gross_margin_pct >= 45 %}pill-green{% else %}pill-red{% endif %}">
-                  {{ job.gross_margin_pct }}%
-                </span>
-              {% else %}
-                <span class="pill pill-yellow">Pending</span>
-              {% endif %}
-            </td>
-            <td>
-              {% if job.net_margin_pct is not none %}
-                <span class="pill {% if job.net_margin_pct >= 15 %}pill-green{% else %}pill-red{% endif %}">
-                  {{ job.net_margin_pct }}%
-                </span>
-              {% else %}
-                <span class="pill pill-yellow">Pending</span>
-              {% endif %}
-            </td>
-            <td>
-              {% if job.gross_margin_flag %}
-                <span style="font-size:11px;color:#dc2626;font-weight:600">⚠️</span>
-              {% endif %}
-            </td>
+            <td style="white-space:nowrap;color:var(--text-muted)">{{ job.close_date_str }}</td>
+            <td style="font-weight:600;color:var(--text-primary)">{{ job.client }}</td>
+            <td><span class="crew-dot" style="background:{{ crew_colors.get(job.crew, '#555e71') }}"></span>{{ job.crew }}</td>
+            <td style="font-weight:700;color:var(--text-primary)">${{ "{:,.0f}".format(job.revenue) }}</td>
+            <td>{% if job.total_job_cost is not none %}${{ "{:,.0f}".format(job.total_job_cost) }}{% else %}<span class="pill pill-yellow">Pending</span>{% endif %}</td>
+            <td>{% if job.gross_margin_pct is not none %}<span class="pill {% if job.gross_margin_pct >= 45 %}pill-green{% else %}pill-red{% endif %}">{{ job.gross_margin_pct }}%</span>{% else %}<span class="pill pill-yellow">Pending</span>{% endif %}</td>
+            <td>{% if job.net_profit is not none %}<span class="{% if job.net_profit >= 0 %}val-positive{% else %}val-negative{% endif %}">${{ "{:,.0f}".format(job.net_profit) }}</span>{% else %}<span class="pill pill-yellow">Pending</span>{% endif %}</td>
+            <td>{% if job.net_margin_pct is not none %}<span class="pill {% if job.net_margin_pct >= 15 %}pill-green{% else %}pill-red{% endif %}">{{ job.net_margin_pct }}%</span>{% else %}<span class="pill pill-yellow">Pending</span>{% endif %}</td>
+            <td style="text-align:center;color:var(--text-muted)">{{ job.estimated_hours or '—' }}</td>
+            <td style="text-align:center"><span class="pill pill-yellow" style="font-size:10px">Pending</span></td>
+            <td>{% if job.gross_margin_flag %}<span style="font-size:10px;color:var(--red)">⚠</span>{% endif %}</td>
           </tr>
           {% else %}
-          <tr><td colspan="8" class="text-center text-muted py-4">No jobs found</td></tr>
+          <tr><td colspan="11" style="text-align:center;padding:32px;color:var(--text-muted)">No jobs found</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -453,110 +580,74 @@
   </div>
 
   {% endif %}
-</div><!-- /main-content -->
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
 {% if data %}
 <script>
-  const CHART_DEFAULTS = {
-    font: { family: 'Inter', size: 12 },
-    color: '#64748b',
-  };
   Chart.defaults.font.family = 'Inter';
-  Chart.defaults.color = '#64748b';
+  Chart.defaults.color = '#555e71';
 
-  // Chart 1: Gross margin by crew
+  const gridColor = 'rgba(37,43,58,.6)';
+
   new Chart(document.getElementById('crewMarginChart'), {
     type: 'bar',
     data: {
       labels: {{ data.crew_margin_chart.labels | tojson }},
       datasets: [{
-        label: 'Gross Margin %',
         data: {{ data.crew_margin_chart.data | tojson }},
         backgroundColor: {{ data.crew_margin_chart.colors | tojson }},
-        borderRadius: 8,
-        borderSkipped: false,
+        borderRadius: 6, borderSkipped: false, barThickness: 36,
       }]
     },
     options: {
       responsive: true,
-      plugins: {
-        legend: { display: false },
-        tooltip: { callbacks: { label: ctx => ` ${ctx.parsed.y}%` } },
-      },
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ` ${c.parsed.y}%` } } },
       scales: {
-        y: {
-          beginAtZero: true, max: 100,
-          grid: { color: '#f1f5f9' },
-          ticks: { callback: v => v + '%' },
-        },
-        x: { grid: { display: false } },
+        y: { beginAtZero: true, max: 100, grid: { color: gridColor }, ticks: { callback: v => v+'%', font: { size: 11 } } },
+        x: { grid: { display: false }, ticks: { font: { size: 11, weight: 600 } } },
       },
     }
   });
 
-  // Chart 2: Monthly revenue
   new Chart(document.getElementById('revenueChart'), {
     type: 'line',
     data: {
       labels: {{ data.monthly_revenue_chart.labels | tojson }},
       datasets: [{
-        label: 'Revenue',
         data: {{ data.monthly_revenue_chart.data | tojson }},
-        borderColor: '#6366f1',
-        backgroundColor: 'rgba(99,102,241,.08)',
-        borderWidth: 2.5,
-        pointBackgroundColor: '#6366f1',
-        pointRadius: 4,
-        pointHoverRadius: 6,
-        fill: true,
-        tension: 0.35,
+        borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,.08)',
+        borderWidth: 2.5, pointBackgroundColor: '#3b82f6',
+        pointRadius: 4, pointHoverRadius: 6, fill: true, tension: 0.4,
       }]
     },
     options: {
       responsive: true,
-      plugins: {
-        legend: { display: false },
-        tooltip: { callbacks: { label: ctx => ` $${ctx.parsed.y.toLocaleString()}` } },
-      },
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ` $${c.parsed.y.toLocaleString()}` } } },
       scales: {
-        y: {
-          beginAtZero: true,
-          grid: { color: '#f1f5f9' },
-          ticks: { callback: v => '$' + (v >= 1000 ? (v/1000).toFixed(0)+'k' : v) },
-        },
-        x: { grid: { display: false } },
+        y: { beginAtZero: true, grid: { color: gridColor }, ticks: { callback: v => '$'+(v>=1000?(v/1000).toFixed(0)+'k':v), font: { size: 11 } } },
+        x: { grid: { display: false }, ticks: { font: { size: 11 } } },
       },
     }
   });
 
-  // Chart 3: Jobs per week
   new Chart(document.getElementById('weeklyJobsChart'), {
     type: 'bar',
     data: {
       labels: {{ data.weekly_jobs_chart.labels | tojson }},
       datasets: [{
-        label: 'Jobs',
         data: {{ data.weekly_jobs_chart.data | tojson }},
-        backgroundColor: '#0ea5e9',
-        borderRadius: 6,
-        borderSkipped: false,
+        backgroundColor: 'rgba(59,130,246,.3)', hoverBackgroundColor: 'rgba(59,130,246,.5)',
+        borderRadius: 4, borderSkipped: false,
       }]
     },
     options: {
       responsive: true,
-      plugins: {
-        legend: { display: false },
-        tooltip: { callbacks: { label: ctx => ` ${ctx.parsed.y} jobs` } },
-      },
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ` ${c.parsed.y} jobs` } } },
       scales: {
-        y: {
-          beginAtZero: true,
-          ticks: { stepSize: 1 },
-          grid: { color: '#f1f5f9' },
-        },
-        x: { grid: { display: false } },
+        y: { beginAtZero: true, ticks: { stepSize: 1, font: { size: 9 } }, grid: { color: gridColor } },
+        x: { grid: { display: false }, ticks: { font: { size: 9 } } },
       },
     }
   });

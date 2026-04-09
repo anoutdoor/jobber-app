@@ -48,6 +48,10 @@ query BackfillJobs($cursor: String) {{
           startAt
         }}
       }}
+      customFields {{
+        ... on CustomFieldNumeric {{ label valueNumeric }}
+        ... on CustomFieldText {{ label valueText }}
+      }}
       timeSheetEntries(first: 10) {{
         nodes {{
           user {{
