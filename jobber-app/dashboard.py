@@ -50,10 +50,13 @@ def parse_jobs(raw):
             "total_job_cost":   pending_or_float("Total Job Cost ($)"),
             "gross_profit":     safe_float(job.get("Gross Profit ($)", 0)),
             "gross_margin_pct": pending_or_float("Gross Margin %"),
+            "net_profit":       pending_or_float("Net Profit ($)"),
             "net_margin_pct":   pending_or_float("Net Margin %"),
             "gross_margin_flag": str(job.get("Gross Margin Flag", "")),
             "net_margin_flag":   str(job.get("Net Margin Flag", "")),
             "rev_per_visit_day": safe_float(job.get("Revenue / Visit Day ($)", 0)),
+            "labor_hours":      safe_float(job.get("Labor Hours", 0)),
+            "estimated_hours":  str(job.get("Estimated Hours", "")),
         })
 
     parsed.sort(key=lambda x: x["close_date"], reverse=True)
@@ -86,6 +89,18 @@ def compute_dashboard():
     nm_vals = [j["net_margin_pct"]   for j in month_jobs if j["net_margin_pct"]   is not None]
     avg_gross_margin = round(sum(gm_vals) / len(gm_vals), 1) if gm_vals else None
     avg_net_margin   = round(sum(nm_vals) / len(nm_vals), 1) if nm_vals else None
+
+    # ── Hours KPIs ───────────────────────────────────────────────────────────
+    total_estimated_hours = 0.0
+    total_labor_hours = 0.0
+    jobs_with_estimates = 0
+    for j in month_jobs:
+        eh = safe_float(j.get("estimated_hours", 0))
+        lh = safe_float(j.get("labor_hours", 0))
+        total_labor_hours += lh
+        if eh > 0:
+            total_estimated_hours += eh
+            jobs_with_estimates += 1
 
     # ── Crew leaderboard ─────────────────────────────────────────────────────
     CREWS = ["Ernesto", "Arturo", "Gonzalo", "Other"]
@@ -139,6 +154,40 @@ def compute_dashboard():
 
     weekly_jobs_chart = {"labels": week_labels, "data": week_counts}
 
+    # ── Week by week financial breakdown ─────────────────────────────────────
+    weeks = []
+    for i in range(7, -1, -1):
+        ws = week_start_base - timedelta(weeks=i)
+        we = ws + timedelta(days=6)
+        wk_jobs = [j for j in jobs if ws <= j["close_date"] <= we]
+        if not wk_jobs:
+            continue
+
+        wk_revenue   = round(sum(j["revenue"] for j in wk_jobs), 2)
+        wk_cost_vals = [j["total_job_cost"] for j in wk_jobs if j["total_job_cost"] is not None]
+        wk_cost      = round(sum(wk_cost_vals), 2) if wk_cost_vals else None
+        wk_gp        = round(sum(j["gross_profit"] for j in wk_jobs), 2)
+        wk_gm        = round(wk_gp / wk_revenue * 100, 1) if wk_revenue else None
+
+        np_vals       = [j["net_profit"] for j in wk_jobs if j["net_profit"] is not None]
+        wk_np         = round(sum(np_vals), 2) if np_vals else None
+        wk_nm         = round(wk_np / wk_revenue * 100, 1) if (wk_np is not None and wk_revenue) else None
+
+        weeks.append({
+            "label":        f"{ws.strftime('%b %d')} – {we.strftime('%b %d')}",
+            "start":        ws.isoformat(),
+            "jobs":         len(wk_jobs),
+            "revenue":      wk_revenue,
+            "total_cost":   wk_cost,
+            "gross_profit": wk_gp,
+            "gross_margin": wk_gm,
+            "net_profit":   wk_np,
+            "net_margin":   wk_nm,
+            "job_list":     sorted(wk_jobs, key=lambda j: j["close_date"]),
+        })
+
+    weeks.reverse()  # most recent first
+
     return {
         "month_label":          today.strftime("%B %Y"),
         "month_revenue":        month_revenue,
@@ -150,6 +199,10 @@ def compute_dashboard():
         "crew_margin_chart":    crew_margin_chart,
         "monthly_revenue_chart": monthly_revenue_chart,
         "weekly_jobs_chart":    weekly_jobs_chart,
+        "weeks":                weeks,
+        "total_estimated_hours": round(total_estimated_hours, 1),
+        "total_labor_hours":    round(total_labor_hours, 1),
+        "jobs_with_estimates":  jobs_with_estimates,
         "recent_jobs":          jobs[:30],
         "last_updated":         today.strftime("%B %d, %Y"),
     }

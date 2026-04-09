@@ -166,6 +166,109 @@ def backfill():
     return jsonify(result)
 
 
+
+@app.route("/outstanding-quotes")
+def outstanding_quotes():
+    if "access_token" not in session:
+        return redirect(url_for("login"))
+    from jobber_sync import graphql_request
+    from jobber_sync import graphql_request as gql
+    import csv, io
+    from flask import Response
+
+    query = """
+    query OutstandingQuotes($cursor: String) {
+      quotes(first: 10, after: $cursor) {
+        nodes {
+          quoteNumber title quoteStatus sentAt
+          amounts { total }
+          client {
+            name
+            phones { number primary }
+            emails { address primary }
+          }
+          property { address { street city province postalCode } }
+          lineItems { nodes { name description quantity unitPrice totalPrice } }
+        }
+        pageInfo { hasNextPage endCursor }
+      }
+    }
+    """
+
+    all_quotes = []
+    cursor = None
+    while True:
+        data = gql(query, {"cursor": cursor}, access_token=session.get("access_token"))
+        if not data or not data.get("data"):
+            break
+        qdata = data["data"].get("quotes", {})
+        nodes = qdata.get("nodes", [])
+        for n in nodes:
+            if n.get("quoteStatus") == "awaiting_response":
+                all_quotes.append(n)
+        pi = qdata.get("pageInfo", {})
+        if not pi.get("hasNextPage"):
+            break
+        cursor = pi.get("endCursor")
+
+    fmt = request.args.get("format", "json")
+
+    from collections import OrderedDict
+    clients = OrderedDict()
+    for q in all_quotes:
+        client = q.get("client") or {}
+        name = client.get("name", "")
+        emails = client.get("emails") or []
+        phones = client.get("phones") or []
+        primary_email = next((e["address"] for e in emails if e.get("primary")), emails[0]["address"] if emails else "")
+        primary_phone = next((p["number"] for p in phones if p.get("primary")), phones[0]["number"] if phones else "")
+        addr = ((q.get("property") or {}).get("address") or {})
+        address = ", ".join(p for p in [addr.get("street",""), addr.get("city",""), addr.get("province",""), addr.get("postalCode","")] if p)
+        line_items = (q.get("lineItems") or {}).get("nodes", [])
+        li_names = [li.get("name", "") for li in line_items if li.get("name")]
+
+        if name not in clients:
+            clients[name] = {
+                "Client": name,
+                "Email": primary_email,
+                "Phone": primary_phone,
+                "Property": address,
+                "Quotes": [],
+                "Line Items": [],
+                "Total Outstanding": 0,
+            }
+
+        clients[name]["Quotes"].append(q.get("quoteNumber", ""))
+        clients[name]["Line Items"].extend(li_names)
+        clients[name]["Total Outstanding"] += q.get("amounts", {}).get("total", 0)
+
+    rows = []
+    for c in clients.values():
+        rows.append({
+            "Client": c["Client"],
+            "Email": c["Email"],
+            "Phone": c["Phone"],
+            "Property": c["Property"],
+            "Quote #s": ", ".join(c["Quotes"]),
+            "# of Quotes": len(c["Quotes"]),
+            "Total Outstanding ($)": round(c["Total Outstanding"], 2),
+            "Line Items": ", ".join(dict.fromkeys(c["Line Items"])),  # unique, preserves order
+        })
+
+    if fmt == "csv":
+        if not rows:
+            return "No outstanding quotes found.", 200
+        si = io.StringIO()
+        writer = csv.DictWriter(si, fieldnames=rows[0].keys())
+        writer.writeheader()
+        writer.writerows(rows)
+        return Response(si.getvalue(), mimetype="text/csv",
+                        headers={"Content-Disposition": "attachment; filename=outstanding_quotes.csv"})
+
+    return jsonify({"total_clients": len(rows), "clients": rows})
+    return jsonify(data)
+
+
 @app.route("/dashboard")
 def dashboard():
     try:

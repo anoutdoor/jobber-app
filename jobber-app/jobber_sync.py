@@ -73,6 +73,10 @@ query GetClosedJobs($cursor: String) {
           startAt
         }
       }
+      customFields {
+        ... on CustomFieldNumeric { label valueNumeric }
+        ... on CustomFieldText { label valueText }
+      }
       timeSheetEntries(first: 10) {
         nodes {
           user {
@@ -247,6 +251,19 @@ def cost_job(job):
     materials_cost = round(float(jc.get("expenseCost") or 0), 2)
     invoice_total = round(float(jc.get("totalRevenue") or 0), 2)
 
+    # Estimated hours from custom fields (it's a union type, not a connection)
+    estimated_hours = ""
+    for cf in (job.get("customFields") or []):
+        if cf.get("label", "").lower().strip() == "estimated hours":
+            val = cf.get("valueNumeric") or cf.get("valueText") or ""
+            if val == 0.0:
+                estimated_hours = ""
+            elif isinstance(val, float) and val == int(val):
+                estimated_hours = str(int(val))
+            else:
+                estimated_hours = str(val)
+            break
+
     # Gross profit is overhead-independent — always calculated immediately
     gross_profit = round(invoice_total - labor_cost - materials_cost, 2)
     gross_margin_pct = round(gross_profit / invoice_total * 100, 2) if invoice_total else 0.0
@@ -273,6 +290,7 @@ def cost_job(job):
         "gross_margin_pct": gross_margin_pct,
         "gross_margin_flag": gross_margin_flag,
         "rev_per_visit_day": rev_per_day,
+        "estimated_hours": estimated_hours,
         "synced_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"),
     }
 
@@ -350,7 +368,7 @@ JOBS_HEADERS = [
     "Labor Cost ($)", "Materials Cost ($)", "Total Job Cost ($)",
     "Invoice Total ($)", "Gross Profit ($)", "Gross Margin %",
     "Gross Margin Flag", "Net Profit ($)", "Net Margin %",
-    "Net Margin Flag", "Revenue / Visit Day ($)", "Synced At",
+    "Net Margin Flag", "Revenue / Visit Day ($)", "Estimated Hours", "Synced At",
 ]
 
 CREW_OVERHEAD_HEADERS = ["Crew", "Lead Name", "Daily Overhead Rate ($)"]
@@ -391,7 +409,8 @@ def row_from_costed(c):
         c["labor_cost"], c["materials_cost"], c["total_job_cost"],
         c["invoice_total"], c["gross_profit"], c["gross_margin_pct"],
         c["gross_margin_flag"], c["net_profit"], c["net_margin_pct"],
-        c["net_margin_flag"], c["rev_per_visit_day"], c["synced_at"],
+        c["net_margin_flag"], c["rev_per_visit_day"], c["estimated_hours"],
+        c["synced_at"],
     ]
 
 
