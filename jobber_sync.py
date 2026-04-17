@@ -326,32 +326,57 @@ def cost_job(job):
 # Google Sheets — OAuth user credentials (token saved to token.json)
 # ---------------------------------------------------------------------------
 
-def get_google_credentials():
-    creds = None
-
+def _load_token_from_env_or_file():
+    """Load Google OAuth token from GOOGLE_TOKEN env var or token.json file."""
+    env_token = os.getenv("GOOGLE_TOKEN")
+    if env_token:
+        return Credentials.from_authorized_user_info(json.loads(env_token), GOOGLE_SCOPES)
     if os.path.exists(GOOGLE_TOKEN_FILE):
-        creds = Credentials.from_authorized_user_file(GOOGLE_TOKEN_FILE, GOOGLE_SCOPES)
+        return Credentials.from_authorized_user_file(GOOGLE_TOKEN_FILE, GOOGLE_SCOPES)
+    return None
+
+
+def _save_token(creds):
+    """Save refreshed token back to env-aware storage or local file."""
+    token_json = creds.to_json()
+    # In production (env var mode), log a reminder — Railway env vars must be updated manually
+    if os.getenv("GOOGLE_TOKEN"):
+        logger.info("Google token refreshed. Update GOOGLE_TOKEN env var in Railway if refresh token changed.")
+    with open(GOOGLE_TOKEN_FILE, "w") as f:
+        f.write(token_json)
+    logger.info(f"Google credentials saved to {GOOGLE_TOKEN_FILE}.")
+
+
+def get_google_credentials():
+    creds = _load_token_from_env_or_file()
 
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
             logger.info("Google credentials refreshed.")
+            _save_token(creds)
         else:
-            if not os.path.exists(GOOGLE_CLIENT_SECRETS_FILE):
-                raise FileNotFoundError(
-                    f"Google client secrets file not found: '{GOOGLE_CLIENT_SECRETS_FILE}'. "
-                    "Download it from Google Cloud Console (OAuth 2.0 Desktop app credentials) "
-                    "and place it in the project folder."
+            # Fresh OAuth flow — only works locally (opens a browser)
+            env_secrets = os.getenv("GOOGLE_CLIENT_SECRETS")
+            if env_secrets:
+                import tempfile
+                with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp:
+                    tmp.write(env_secrets)
+                    tmp_path = tmp.name
+                flow = InstalledAppFlow.from_client_secrets_file(tmp_path, GOOGLE_SCOPES)
+                os.unlink(tmp_path)
+            elif os.path.exists(GOOGLE_CLIENT_SECRETS_FILE):
+                flow = InstalledAppFlow.from_client_secrets_file(
+                    GOOGLE_CLIENT_SECRETS_FILE, GOOGLE_SCOPES
                 )
-            flow = InstalledAppFlow.from_client_secrets_file(
-                GOOGLE_CLIENT_SECRETS_FILE, GOOGLE_SCOPES
-            )
+            else:
+                raise FileNotFoundError(
+                    "No Google credentials found. Set GOOGLE_CLIENT_SECRETS env var "
+                    "or place client_secrets.json in the project folder."
+                )
             creds = flow.run_local_server(port=0)
             logger.info("Google authorization completed.")
-
-        with open(GOOGLE_TOKEN_FILE, "w") as f:
-            f.write(creds.to_json())
-        logger.info(f"Google credentials saved to {GOOGLE_TOKEN_FILE}.")
+            _save_token(creds)
 
     return creds
 
