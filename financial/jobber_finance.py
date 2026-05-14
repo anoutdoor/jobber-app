@@ -24,11 +24,7 @@ logger = logging.getLogger(__name__)
 
 INVOICES_QUERY = """
 query OpenInvoices($cursor: String) {
-  invoices(
-    filter: { invoiceStatus: [awaiting_payment, past_due, partial] }
-    first: 50
-    after: $cursor
-  ) {
+  invoices(first: 50, after: $cursor) {
     nodes {
       id
       invoiceNumber
@@ -58,6 +54,9 @@ query OpenInvoices($cursor: String) {
 }
 """
 
+# Statuses that should be excluded from outstanding AR
+_AR_EXCLUDE_STATUSES = {"paid", "draft", "bad_debt", "archived"}
+
 
 def fetch_open_invoices():
     """Return a list of open invoice dicts with computed outstanding balance.
@@ -86,6 +85,9 @@ def fetch_open_invoices():
             break
 
         for node in inv_data.get("nodes", []):
+            status = (node.get("invoiceStatus") or "").lower()
+            if status in _AR_EXCLUDE_STATUSES:
+                continue
             amounts = node.get("amounts") or {}
             total = float(amounts.get("total") or 0)
             paid = float(amounts.get("paymentsTotal") or 0)
@@ -342,3 +344,61 @@ def fetch_time_entries_since(start_dt):
 
     logger.info(f"Time entries: fetched {len(entries)} since {start_str}")
     return entries
+
+
+# ---------------------------------------------------------------------------
+# Debug helpers — raw query dumps for troubleshooting
+# ---------------------------------------------------------------------------
+
+def debug_run_query(query, variables=None):
+    """Run a query once (no pagination) and return the raw GraphQL response.
+    Useful for figuring out which field names / filter shapes Jobber accepts.
+    """
+    data = graphql_request(query, variables or {})
+    return data
+
+
+_DEBUG_INVOICES_RAW = """
+query DebugInvoices {
+  invoices(first: 5) {
+    nodes { id invoiceNumber invoiceStatus amounts { total paymentsTotal } dueDate }
+  }
+}
+"""
+
+_DEBUG_USERS_RAW = """
+query DebugUsers {
+  users(first: 5) {
+    nodes { id name { full } }
+  }
+}
+"""
+
+_DEBUG_TIMESHEETS_RAW = """
+query DebugTimesheets {
+  timeSheetEntries(first: 5) {
+    nodes { id startAt endAt duration user { id name { full } } }
+  }
+}
+"""
+
+_DEBUG_EXPENSES_RAW = """
+query DebugExpenses {
+  expenses(first: 5) {
+    nodes { id title description total enteredAt }
+  }
+}
+"""
+
+
+def debug_all():
+    """Run every Jobber query the financial module needs and return a dict
+    that's safe to dump as JSON. Lets us see which queries work and which
+    error out with field-name issues.
+    """
+    return {
+        "invoices_query": debug_run_query(_DEBUG_INVOICES_RAW),
+        "users_query": debug_run_query(_DEBUG_USERS_RAW),
+        "timesheets_query": debug_run_query(_DEBUG_TIMESHEETS_RAW),
+        "expenses_query": debug_run_query(_DEBUG_EXPENSES_RAW),
+    }

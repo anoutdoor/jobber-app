@@ -181,6 +181,19 @@ def digest_now():
     return jsonify({k: v for k, v in result.items() if k != "html"})
 
 
+@app.route("/financial-debug")
+def financial_debug():
+    """Dump raw responses from each Jobber query so we can see which ones
+    work and which fail with schema errors."""
+    if "access_token" not in session:
+        return redirect(url_for("login"))
+    from financial.jobber_finance import debug_all
+    try:
+        return jsonify(debug_all())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/backfill")
 def backfill():
     if "access_token" not in session:
