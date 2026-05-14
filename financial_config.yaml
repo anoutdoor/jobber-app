@@ -19,6 +19,24 @@ qbo:
     # excluded_account_ids:
     #   - "91"    # 2713 Alex Bootz Chase Business Unlimited CC
     #   - "1150040024"  # Capital One Spark 2% Alex
+
+    # Override the QBO API balance for specific accounts. The Accounting API only
+    # returns the 'posted' (in-QB) balance, which lags the real bank balance shown
+    # in the QBO UI. Use this to pin the real bank balance for any account where
+    # the gap matters. Account ID maps to the same id field surfaced in /qbo/test.
+    #
+    # Values are in "human" sign convention: positive for Bank cash on hand,
+    # positive for CC debt. Update as_of when you refresh the number.
+    balance_overrides: {}
+    # Example:
+    # balance_overrides:
+    #   "48":            # Capital One Credit card
+    #     balance: 12601.48
+    #     as_of: "2026-05-14"
+    #     note: "Real bank balance per QBO UI"
+    #   "89":            # 6540 Niko Chase Business Cash Card
+    #     balance: 49.78
+    #     as_of: "2026-05-14"
   manual:
     as_of: null         # set to today's ISO date when you update the numbers
     cash_accounts:      # bank accounts: positive numbers = cash you have

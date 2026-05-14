@@ -210,36 +210,60 @@ def fetch_account_balances():
     return out
 
 
-def summarize_balances(accounts, excluded_ids=None):
+def summarize_balances(accounts, excluded_ids=None, overrides=None):
     """Split balances into cash (Bank) and credit card debt.
 
     excluded_ids: optional iterable of QBO account IDs to skip (e.g. personal
     cards mixed in with business accounts in QBO).
+    overrides: optional dict {account_id_str: {balance, as_of, note}} to pin
+    real bank-balance values per account (works around the API only exposing
+    posted/ledger balances). Override 'balance' is in human sign convention:
+    positive for Bank cash, positive for CC debt.
 
     Output:
       cash_total = sum of bank balances (positive = cash on hand)
       cc_total   = total credit card debt as a POSITIVE number.
                    QBO returns CC debt as negative balances, so we flip the
                    sign: a -$11,890 balance becomes +$11,890 of debt.
-                   Per-account 'balance' in cc_accounts is also flipped so
-                   the email shows it as a positive debt figure.
     """
     excluded = set(str(x) for x in (excluded_ids or []))
+    overrides = overrides or {}
     cash_total = 0.0
     cc_total = 0.0
     cash_accounts = []
     cc_accounts = []
     for a in accounts:
-        if str(a.get("id")) in excluded:
+        acc_id = str(a.get("id"))
+        if acc_id in excluded:
             continue
+
+        override = overrides.get(acc_id)
+        is_override = False
+        if override and "balance" in override:
+            balance = round(float(override["balance"]), 2)
+            account = {
+                **a,
+                "balance": balance,
+                "is_override": True,
+                "override_as_of": override.get("as_of"),
+                "override_note": override.get("note", ""),
+            }
+            is_override = True
+        else:
+            account = a
+
         if a["type"] == "Bank":
-            cash_total += a["balance"]
-            cash_accounts.append(a)
+            if not is_override:
+                account = {**a, "is_override": False}
+            cash_total += account["balance"]
+            cash_accounts.append(account)
         elif a["type"] == "Credit Card":
-            # Flip sign so debt is positive
-            flipped = round(-a["balance"], 2)
-            cc_total += flipped
-            cc_accounts.append({**a, "balance": flipped})
+            if not is_override:
+                # Flip sign so debt is positive
+                flipped = round(-a["balance"], 2)
+                account = {**a, "balance": flipped, "is_override": False}
+            cc_total += account["balance"]
+            cc_accounts.append(account)
     return {
         "cash_total": round(cash_total, 2),
         "cc_total": round(cc_total, 2),
@@ -292,12 +316,17 @@ def register_routes(app):
                            "Set QBO_TOKEN_STORE env var to persist across deploys.",
             }), 400
         try:
-            excluded = (_qbo_cfg().get("api") or {}).get("excluded_account_ids") or []
+            api_cfg = (_qbo_cfg().get("api") or {})
+            excluded = api_cfg.get("excluded_account_ids") or []
+            overrides = api_cfg.get("balance_overrides") or {}
             accounts = fetch_account_balances()
             return jsonify({
                 "accounts": accounts,
-                "summary": summarize_balances(accounts, excluded_ids=excluded),
+                "summary": summarize_balances(
+                    accounts, excluded_ids=excluded, overrides=overrides
+                ),
                 "excluded_account_ids": excluded,
+                "balance_overrides_active": list(overrides.keys()),
             })
         except Exception as e:
             logger.exception("QBO test failed")

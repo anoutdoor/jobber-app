@@ -96,11 +96,22 @@ def render_email(snapshot, today=None):
     )
 
     # --- Cash detail ---
+    def _acct_label(a):
+        if a.get("is_override"):
+            as_of = a.get("override_as_of") or ""
+            tag = f" <span style='font-size:11px;color:#888'>(override{' as of ' + escape(str(as_of)) if as_of else ''})</span>"
+            return escape(a["name"]) + tag
+        return escape(a["name"])
+
     cash_rows = "".join(
-        _row(a["name"], _money(a["balance"])) for a in qbo.get("cash_accounts", [])
+        f"<tr><td style='padding:4px 8px'>{_acct_label(a)}</td>"
+        f"<td style='padding:4px 8px;text-align:right;font-variant-numeric:tabular-nums'>{_money(a['balance'])}</td></tr>"
+        for a in qbo.get("cash_accounts", [])
     ) or "<tr><td>No bank accounts found</td></tr>"
     cc_rows = "".join(
-        _row(a["name"], _money(a["balance"]), color="#a02020") for a in qbo.get("cc_accounts", [])
+        f"<tr><td style='padding:4px 8px'>{_acct_label(a)}</td>"
+        f"<td style='padding:4px 8px;text-align:right;font-variant-numeric:tabular-nums;color:#a02020'>{_money(a['balance'])}</td></tr>"
+        for a in qbo.get("cc_accounts", [])
     ) or "<tr><td>No credit card accounts found</td></tr>"
 
     cash_html = (
