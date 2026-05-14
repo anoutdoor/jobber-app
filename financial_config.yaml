@@ -86,9 +86,8 @@ overhead:
     - {expense: "Google",                           amount: 40.00,   account: "Co CC",       billing_day: 1,  category: "Software & Subscriptions"}
     - {expense: "chatGPT",                          amount: 20.00,   account: "Co CC",       billing_day: 17, category: "Software & Subscriptions"}
     - {expense: "OpenPhone",                        amount: 166.50,  account: "Co CC",       billing_day: 15, category: "Software & Subscriptions"}
-    - {expense: "QB Payroll",                       amount: 135.00,  account: "Chase Debit", billing_day: null, category: "Software & Subscriptions", notes: "Billed to Rich; billing date irregular"}
-    - {expense: "Bookkeeping services",             amount: 445.00,  account: "Chase Debit", billing_day: null, category: "Software & Subscriptions", notes: "Rich; billing date kind of random"}
-    - {expense: "Accountant Fees",                  amount: null,    account: "",            billing_day: null, category: "", notes: "Might be quarterly; amount TBD"}
+    - {expense: "QB Payroll",                       amount: 135.00,  account: "Chase Debit", billing_day: 1,  category: "Software & Subscriptions", notes: "Billed to Rich; billing date irregular, using 1st as placeholder"}
+    - {expense: "Bookkeeping services",             amount: 445.00,  account: "Chase Debit", billing_day: 1,  category: "Software & Subscriptions", notes: "Rich; billing date kind of random, using 1st as placeholder"}
     - {expense: "Henry Harrigan SEO",               amount: 1400.00, account: "Co CC",       billing_day: 22, category: "Marketing"}
 
 # Payroll accrual
