@@ -140,18 +140,15 @@ def fetch_open_invoices():
 # ---------------------------------------------------------------------------
 
 EXPENSES_QUERY = """
-query Expenses($cursor: String, $startDate: ISO8601Date!) {
-  expenses(
-    filter: { enteredAt: { after: $startDate } }
-    first: 50
-    after: $cursor
-  ) {
+query Expenses($cursor: String) {
+  expenses(first: 50, after: $cursor) {
     nodes {
       id
       description
       title
       total
-      enteredAt
+      date
+      createdAt
       paidBy
     }
     pageInfo {
@@ -164,13 +161,20 @@ query Expenses($cursor: String, $startDate: ISO8601Date!) {
 
 
 def fetch_expenses_since(start_date):
-    """Return all expenses entered in Jobber since start_date (date object)."""
+    """Return all expenses with `date` on or after start_date (date object).
+
+    Filter is applied in Python since we don't yet know the exact filter shape
+    on ExpenseFilterAttributes. Once the introspection confirms it, this can
+    move server-side. For now we paginate all and skip older rows; if we hit
+    a page that's entirely older than start_date we stop early.
+    """
     expenses = []
     cursor = None
-    start_str = start_date.isoformat()
+    start_iso = start_date.isoformat()
+    consecutive_old_pages = 0
 
     while True:
-        data = graphql_request(EXPENSES_QUERY, {"cursor": cursor, "startDate": start_str})
+        data = graphql_request(EXPENSES_QUERY, {"cursor": cursor})
         if not data:
             logger.error("Expenses: graphql_request returned None")
             break
@@ -183,22 +187,38 @@ def fetch_expenses_since(start_date):
             logger.error(f"Expenses: unexpected shape: {json.dumps(data)[:500]}")
             break
 
-        for node in exp_data.get("nodes", []):
+        page_nodes = exp_data.get("nodes", [])
+        page_kept = 0
+        for node in page_nodes:
+            exp_date = (node.get("date") or "")[:10]
+            if exp_date and exp_date < start_iso:
+                continue
             expenses.append({
                 "id": node.get("id"),
                 "description": (node.get("description") or "").strip(),
                 "title": (node.get("title") or "").strip(),
                 "total": float(node.get("total") or 0),
-                "entered_at": (node.get("enteredAt") or "")[:10],
+                "date": exp_date,
+                "created_at": (node.get("createdAt") or "")[:10],
                 "paid_by": node.get("paidBy", ""),
             })
+            page_kept += 1
+
+        # If a whole page returned no in-window rows AND results look chronological,
+        # bail out after two consecutive empty pages (defensive against unknown sort order).
+        if page_kept == 0 and page_nodes:
+            consecutive_old_pages += 1
+            if consecutive_old_pages >= 2:
+                break
+        else:
+            consecutive_old_pages = 0
 
         page_info = exp_data.get("pageInfo", {})
         if not page_info.get("hasNextPage"):
             break
         cursor = page_info.get("endCursor")
 
-    logger.info(f"Expenses: fetched {len(expenses)} since {start_str}")
+    logger.info(f"Expenses: kept {len(expenses)} on/after {start_iso}")
     return expenses
 
 
@@ -225,17 +245,14 @@ def expenses_for_vendor(expenses, parse_patterns):
 # period (last Sunday, inclusive). Hours worked Monday onward = unpaid.
 
 TIME_ENTRIES_QUERY = """
-query TimeEntries($cursor: String, $startDate: ISO8601DateTime!) {
-  timeSheetEntries(
-    filter: { startAt: { after: $startDate } }
-    first: 50
-    after: $cursor
-  ) {
+query TimeEntries($cursor: String) {
+  timeSheetEntries(first: 50, after: $cursor) {
     nodes {
       id
       startAt
       endAt
-      duration
+      finalDuration
+      labourRate
       user {
         id
         name { full }
@@ -255,7 +272,6 @@ query AllUsers($cursor: String) {
     nodes {
       id
       name { full }
-      hourlyRate
     }
     pageInfo {
       hasNextPage
@@ -277,9 +293,9 @@ def current_pay_week_start(today=None):
     return today - timedelta(days=today.weekday())
 
 
-def fetch_user_rates():
-    """Return dict { user_id: hourly_rate (float) }. Missing rates default to 0."""
-    rates = {}
+def fetch_users():
+    """Return dict { user_id: {name} }. Used to backfill names if needed."""
+    out = {}
     cursor = None
     while True:
         data = graphql_request(USERS_QUERY, {"cursor": cursor})
@@ -295,9 +311,8 @@ def fetch_user_rates():
             break
 
         for node in u_data.get("nodes", []):
-            rates[node["id"]] = {
+            out[node["id"]] = {
                 "name": ((node.get("name") or {}).get("full") or ""),
-                "rate": float(node.get("hourlyRate") or 0),
             }
 
         page_info = u_data.get("pageInfo", {})
@@ -305,17 +320,26 @@ def fetch_user_rates():
             break
         cursor = page_info.get("endCursor")
 
-    return rates
+    return out
 
 
 def fetch_time_entries_since(start_dt):
-    """Return all time entries since start_dt (datetime). duration is in seconds."""
+    """Return time entries with startAt on or after start_dt.
+
+    Each entry carries its own labourRate, so we use that directly for the
+    payroll accrual rather than looking up a per-user rate.
+
+    Filter is applied in Python for now (TimeSheetEntriesFilterAttributes
+    shape still being introspected). Early-exits when we see two consecutive
+    pages of all-older entries.
+    """
     entries = []
     cursor = None
-    start_str = start_dt.isoformat()
+    start_iso = start_dt.isoformat()
+    consecutive_old_pages = 0
 
     while True:
-        data = graphql_request(TIME_ENTRIES_QUERY, {"cursor": cursor, "startDate": start_str})
+        data = graphql_request(TIME_ENTRIES_QUERY, {"cursor": cursor})
         if not data:
             break
         if data.get("errors"):
@@ -326,23 +350,37 @@ def fetch_time_entries_since(start_dt):
         if not t_data:
             break
 
-        for node in t_data.get("nodes", []):
+        page_nodes = t_data.get("nodes", [])
+        page_kept = 0
+        for node in page_nodes:
+            start_at = node.get("startAt") or ""
+            if start_at and start_at < start_iso:
+                continue
             user = node.get("user") or {}
             entries.append({
                 "id": node.get("id"),
                 "user_id": user.get("id"),
                 "user_name": ((user.get("name") or {}).get("full") or ""),
-                "start_at": node.get("startAt"),
+                "start_at": start_at,
                 "end_at": node.get("endAt"),
-                "duration_seconds": float(node.get("duration") or 0),
+                "duration_seconds": float(node.get("finalDuration") or 0),
+                "labour_rate": float(node.get("labourRate") or 0),
             })
+            page_kept += 1
+
+        if page_kept == 0 and page_nodes:
+            consecutive_old_pages += 1
+            if consecutive_old_pages >= 2:
+                break
+        else:
+            consecutive_old_pages = 0
 
         page_info = t_data.get("pageInfo", {})
         if not page_info.get("hasNextPage"):
             break
         cursor = page_info.get("endCursor")
 
-    logger.info(f"Time entries: fetched {len(entries)} since {start_str}")
+    logger.info(f"Time entries: kept {len(entries)} on/after {start_iso}")
     return entries
 
 
@@ -391,8 +429,8 @@ query DebugExpenses {
 """
 
 # Schema introspection — ask Jobber for the actual fields on each type, plus
-# the argument shapes for the top-level queries we care about. This lets us
-# stop guessing filter syntax.
+# the argument shapes for the top-level queries AND the input fields of the
+# filter types. Stops the guessing game for filter syntax.
 _INTROSPECT_QUERY = """
 query Introspect {
   Expense: __type(name: "Expense") {
@@ -409,6 +447,15 @@ query Introspect {
       name
       args { name type { name kind ofType { name kind } } }
     }
+  }
+  TimeSheetFilter: __type(name: "TimeSheetEntriesFilterAttributes") {
+    inputFields { name type { name kind ofType { name kind ofType { name kind } } } }
+  }
+  ExpenseFilter: __type(name: "ExpenseFilterAttributes") {
+    inputFields { name type { name kind ofType { name kind ofType { name kind } } } }
+  }
+  InvoiceFilter: __type(name: "InvoiceFilterAttributes") {
+    inputFields { name type { name kind ofType { name kind ofType { name kind } } } }
   }
 }
 """
@@ -429,8 +476,8 @@ def debug_all():
 
 
 def debug_field_names():
-    """Compact view of Introspect: just field names per type, plus arg names
-    per top-level query field. Easier to skim than the full introspection."""
+    """Compact view of Introspect: field names per type, query args, and
+    INPUT fields for the filter types so we can see how to filter."""
     data = debug_run_query(_INTROSPECT_QUERY)
     if not data or not data.get("data"):
         return {"error": "introspection failed", "raw": data}
@@ -441,7 +488,6 @@ def debug_field_names():
         t = d.get(type_name) or {}
         out[type_name + "_fields"] = sorted(f["name"] for f in (t.get("fields") or []))
 
-    # Top-level Query fields we care about + their args
     query_type = d.get("Query") or {}
     targets = {"expenses", "timeSheetEntries", "users", "invoices"}
     query_args = {}
@@ -452,4 +498,22 @@ def debug_field_names():
                 for a in (f.get("args") or [])
             ]
     out["Query_args"] = query_args
+
+    # Filter input types — show the input fields we can pass under filter:{...}
+    def shape_type(t):
+        if not t:
+            return None
+        name = t.get("name")
+        if name:
+            return name
+        of = t.get("ofType")
+        return f"{t.get('kind')}<{shape_type(of)}>" if of else t.get("kind")
+
+    for label in ("TimeSheetFilter", "ExpenseFilter", "InvoiceFilter"):
+        t = d.get(label) or {}
+        out[label + "_inputs"] = [
+            {"name": f["name"], "type": shape_type(f.get("type"))}
+            for f in (t.get("inputFields") or [])
+        ]
+
     return out

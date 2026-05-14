@@ -11,7 +11,6 @@ from financial.jobber_finance import (
     fetch_open_invoices,
     fetch_expenses_since,
     expenses_for_vendor,
-    fetch_user_rates,
     fetch_time_entries_since,
     current_pay_week_start,
 )
@@ -113,42 +112,46 @@ def compute_vendor_balances(today=None):
 # ---------------------------------------------------------------------------
 
 def compute_payroll_accrual(today=None):
-    """Hours worked since Monday 00:00 of current pay week × user hourly rate.
+    """Hours worked since Monday 00:00 of current pay week × labourRate.
 
-    Returns dict with per-person breakdown and total.
+    Each time entry carries its own labourRate (from Jobber), so the accrual
+    is sum(duration * labourRate) per entry. Per-person breakdown computes
+    a weighted-average effective rate when one user worked at multiple rates
+    during the week.
+
+    rate_overrides in financial_config.yaml force a specific rate for a
+    given user name when Jobber's labourRate is missing or wrong.
     """
     today = today or date.today()
     week_start = current_pay_week_start(today)
     start_dt = datetime.combine(week_start, datetime.min.time())
 
-    rates = fetch_user_rates()  # {user_id: {name, rate}}
     rate_overrides = payroll_settings().get("rate_overrides") or {}
-
     entries = fetch_time_entries_since(start_dt)
 
     by_user = {}
     for e in entries:
         uid = e.get("user_id")
         name = e.get("user_name") or "Unknown"
-        hours = round(e["duration_seconds"] / 3600, 2)
+        hours = e["duration_seconds"] / 3600.0
+        rate = float(rate_overrides[name]) if name in rate_overrides else float(e.get("labour_rate") or 0)
 
-        if uid not in by_user:
-            override = rate_overrides.get(name)
-            rate_info = rates.get(uid, {})
-            rate = float(override) if override is not None else rate_info.get("rate", 0.0)
-            by_user[uid] = {
-                "name": name,
-                "hours": 0.0,
-                "rate": rate,
-                "estimated_pay": 0.0,
-                "rate_source": "override" if override is not None else ("jobber" if rate else "missing"),
-            }
-        by_user[uid]["hours"] = round(by_user[uid]["hours"] + hours, 2)
+        bucket = by_user.setdefault(uid or name, {
+            "name": name,
+            "hours": 0.0,
+            "estimated_pay": 0.0,
+            "rate_source": "override" if name in rate_overrides else ("entry" if rate else "missing"),
+        })
+        bucket["hours"] += hours
+        bucket["estimated_pay"] += hours * rate
 
+    # Compute effective rate per user (weighted avg)
     total_accrual = 0.0
     total_hours = 0.0
     for u in by_user.values():
-        u["estimated_pay"] = round(u["hours"] * u["rate"], 2)
+        u["hours"] = round(u["hours"], 2)
+        u["estimated_pay"] = round(u["estimated_pay"], 2)
+        u["rate"] = round(u["estimated_pay"] / u["hours"], 2) if u["hours"] else 0.0
         total_accrual += u["estimated_pay"]
         total_hours += u["hours"]
 
