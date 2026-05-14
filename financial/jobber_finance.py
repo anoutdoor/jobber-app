@@ -385,7 +385,30 @@ query DebugTimesheets {
 _DEBUG_EXPENSES_RAW = """
 query DebugExpenses {
   expenses(first: 5) {
-    nodes { id title description total enteredAt }
+    nodes { id title description total }
+  }
+}
+"""
+
+# Schema introspection — ask Jobber for the actual fields on each type, plus
+# the argument shapes for the top-level queries we care about. This lets us
+# stop guessing filter syntax.
+_INTROSPECT_QUERY = """
+query Introspect {
+  Expense: __type(name: "Expense") {
+    fields { name type { name kind ofType { name kind } } }
+  }
+  TimeSheetEntry: __type(name: "TimeSheetEntry") {
+    fields { name type { name kind ofType { name kind } } }
+  }
+  User: __type(name: "User") {
+    fields { name type { name kind ofType { name kind } } }
+  }
+  Query: __type(name: "Query") {
+    fields {
+      name
+      args { name type { name kind ofType { name kind } } }
+    }
   }
 }
 """
@@ -401,4 +424,32 @@ def debug_all():
         "users_query": debug_run_query(_DEBUG_USERS_RAW),
         "timesheets_query": debug_run_query(_DEBUG_TIMESHEETS_RAW),
         "expenses_query": debug_run_query(_DEBUG_EXPENSES_RAW),
+        "introspect": debug_run_query(_INTROSPECT_QUERY),
     }
+
+
+def debug_field_names():
+    """Compact view of Introspect: just field names per type, plus arg names
+    per top-level query field. Easier to skim than the full introspection."""
+    data = debug_run_query(_INTROSPECT_QUERY)
+    if not data or not data.get("data"):
+        return {"error": "introspection failed", "raw": data}
+
+    d = data["data"]
+    out = {}
+    for type_name in ("Expense", "TimeSheetEntry", "User"):
+        t = d.get(type_name) or {}
+        out[type_name + "_fields"] = sorted(f["name"] for f in (t.get("fields") or []))
+
+    # Top-level Query fields we care about + their args
+    query_type = d.get("Query") or {}
+    targets = {"expenses", "timeSheetEntries", "users", "invoices"}
+    query_args = {}
+    for f in (query_type.get("fields") or []):
+        if f["name"] in targets:
+            query_args[f["name"]] = [
+                {"name": a["name"], "type": (a["type"] or {}).get("name") or (a["type"] or {}).get("kind")}
+                for a in (f.get("args") or [])
+            ]
+    out["Query_args"] = query_args
+    return out

@@ -194,6 +194,19 @@ def financial_debug():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/financial-schema")
+def financial_schema():
+    """Compact list of field names per Jobber type + arg names per top-level
+    query field. Easier to skim than /financial-debug's full introspection."""
+    if "access_token" not in session:
+        return redirect(url_for("login"))
+    from financial.jobber_finance import debug_field_names
+    try:
+        return jsonify(debug_field_names())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/backfill")
 def backfill():
     if "access_token" not in session:
