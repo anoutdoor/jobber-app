@@ -207,6 +207,19 @@ def financial_schema():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/financial-ts-filter-probe")
+def financial_ts_filter_probe():
+    """Probe several plausible filter shapes for timeSheetEntries.startAt to
+    discover which one Iso8601DateTimeRangeInput actually expects."""
+    if "access_token" not in session:
+        return redirect(url_for("login"))
+    from financial.jobber_finance import debug_timesheet_filters
+    try:
+        return jsonify(debug_timesheet_filters())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/backfill")
 def backfill():
     if "access_token" not in session:

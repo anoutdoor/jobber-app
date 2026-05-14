@@ -41,16 +41,20 @@ def _api_base():
 # ---------------------------------------------------------------------------
 
 def load_tokens():
-    # Prefer env var on Railway (survives redeploys); fall back to file for local dev.
-    env_blob = os.getenv("QBO_TOKEN_STORE")
-    if env_blob:
-        try:
-            return json.loads(env_blob)
-        except json.JSONDecodeError:
-            logger.error("QBO_TOKEN_STORE env var is not valid JSON.")
+    # Prefer the file (freshest after each refresh). Env var is a fallback used
+    # to seed tokens after a Railway redeploy wipes the filesystem.
     if os.path.exists(TOKEN_STORE_FILE):
         with open(TOKEN_STORE_FILE) as f:
             return json.load(f)
+    env_blob = os.getenv("QBO_TOKEN_STORE")
+    if env_blob:
+        try:
+            parsed = json.loads(env_blob)
+            if isinstance(parsed, dict) and parsed.get("access_token"):
+                return parsed
+            logger.error("QBO_TOKEN_STORE is not a JSON object with access_token.")
+        except json.JSONDecodeError:
+            logger.error("QBO_TOKEN_STORE env var is not valid JSON.")
     return {}
 
 

@@ -388,7 +388,7 @@ query DebugUsers {
 _DEBUG_TIMESHEETS_RAW = """
 query DebugTimesheets {
   timeSheetEntries(first: 5) {
-    nodes { id startAt endAt duration user { id name { full } } }
+    nodes { id startAt endAt finalDuration labourRate user { id name { full } } }
   }
 }
 """
@@ -446,6 +446,49 @@ def debug_all():
         "expenses_query": debug_run_query(_DEBUG_EXPENSES_RAW),
         "introspect": debug_run_query(_INTROSPECT_QUERY),
     }
+
+
+def debug_timesheet_filters():
+    """Try several plausible filter shapes for timeSheetEntries and report
+    which ones work. The one that returns rows (or at least no errors) is
+    the right syntax for Iso8601DateTimeRangeInput.
+    """
+    from datetime import datetime as _dt, timedelta as _td
+    # 7 days ago, ISO8601 with Z
+    cutoff = (_dt.utcnow() - _td(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    shapes = {
+        "from": '{ from: "%s" }' % cutoff,
+        "after": '{ after: "%s" }' % cutoff,
+        "gte": '{ gte: "%s" }' % cutoff,
+        "gt": '{ gt: "%s" }' % cutoff,
+        "start": '{ start: "%s" }' % cutoff,
+        "since": '{ since: "%s" }' % cutoff,
+    }
+
+    results = {}
+    for label, inner in shapes.items():
+        q = """
+        query DebugTSFilter {
+          timeSheetEntries(filter: { startAt: %s }, first: 3) {
+            nodes { id startAt user { name { full } } }
+          }
+        }
+        """ % inner
+        resp = debug_run_query(q)
+        if not resp:
+            results[label] = {"status": "no response"}
+            continue
+        if resp.get("errors"):
+            results[label] = {
+                "status": "error",
+                "message": (resp["errors"][0].get("message") or "")[:200],
+            }
+        else:
+            nodes = (((resp.get("data") or {}).get("timeSheetEntries") or {}).get("nodes")) or []
+            results[label] = {"status": "ok", "row_count": len(nodes),
+                              "first_startAt": nodes[0]["startAt"] if nodes else None}
+    return {"cutoff_used": cutoff, "tried": results}
 
 
 def debug_field_names():
