@@ -159,11 +159,14 @@ def _api_get(path, access_token=None, _retry=True):
 
 def fetch_account_balances():
     """Return list of dicts:
-        {name, type, subtype, current_balance, currency}
+        {id, name, type, subtype, balance, currency}
     for all active Bank and Credit Card accounts.
 
-    Bank balances are positive (cash on hand).
-    Credit Card balances are stored positive in QBO but represent debt.
+    Bank balances: positive = cash on hand.
+    Credit Card balances: QBO returns these as negative when there's debt owed
+    (e.g. Capital One Spark balance of -$11,890 means you owe $11,890).
+    The sign is normalized in summarize_balances() so cc_total is a positive
+    number representing total debt.
     """
     # QBO SQL-like query language
     query = (
@@ -191,19 +194,36 @@ def fetch_account_balances():
     return out
 
 
-def summarize_balances(accounts):
-    """Split balances into cash (Bank) and credit card debt."""
+def summarize_balances(accounts, excluded_ids=None):
+    """Split balances into cash (Bank) and credit card debt.
+
+    excluded_ids: optional iterable of QBO account IDs to skip (e.g. personal
+    cards mixed in with business accounts in QBO).
+
+    Output:
+      cash_total = sum of bank balances (positive = cash on hand)
+      cc_total   = total credit card debt as a POSITIVE number.
+                   QBO returns CC debt as negative balances, so we flip the
+                   sign: a -$11,890 balance becomes +$11,890 of debt.
+                   Per-account 'balance' in cc_accounts is also flipped so
+                   the email shows it as a positive debt figure.
+    """
+    excluded = set(str(x) for x in (excluded_ids or []))
     cash_total = 0.0
     cc_total = 0.0
     cash_accounts = []
     cc_accounts = []
     for a in accounts:
+        if str(a.get("id")) in excluded:
+            continue
         if a["type"] == "Bank":
             cash_total += a["balance"]
             cash_accounts.append(a)
         elif a["type"] == "Credit Card":
-            cc_total += a["balance"]
-            cc_accounts.append(a)
+            # Flip sign so debt is positive
+            flipped = round(-a["balance"], 2)
+            cc_total += flipped
+            cc_accounts.append({**a, "balance": flipped})
     return {
         "cash_total": round(cash_total, 2),
         "cc_total": round(cc_total, 2),
@@ -246,8 +266,14 @@ def register_routes(app):
 
     @app.route("/qbo/test")
     def qbo_test():
+        from financial.config import qbo_settings as _qbo_cfg
+        excluded = (_qbo_cfg().get("api") or {}).get("excluded_account_ids") or []
         accounts = fetch_account_balances()
-        return jsonify({"accounts": accounts, "summary": summarize_balances(accounts)})
+        return jsonify({
+            "accounts": accounts,
+            "summary": summarize_balances(accounts, excluded_ids=excluded),
+            "excluded_account_ids": excluded,
+        })
 
     @app.route("/qbo/disconnect")
     def qbo_disconnect():

@@ -150,9 +150,11 @@ def build_snapshot(today=None):
         qbo_summary = _manual_qbo_summary(qbo_cfg)
         logger.info(f"QBO: manual mode, as_of={qbo_summary.get('as_of')}")
     else:
+        excluded = (qbo_cfg.get("api") or {}).get("excluded_account_ids") or []
         accounts = fetch_account_balances()
-        qbo_summary = summarize_balances(accounts)
+        qbo_summary = summarize_balances(accounts, excluded_ids=excluded)
         qbo_summary["mode"] = "api"
+        logger.info(f"QBO: api mode, excluded {len(excluded)} account(s)")
 
     invoices = fetch_open_invoices()
     ar = compute_ar(invoices)
