@@ -140,8 +140,12 @@ def fetch_open_invoices():
 # ---------------------------------------------------------------------------
 
 EXPENSES_QUERY = """
-query Expenses($cursor: String) {
-  expenses(first: 50, after: $cursor) {
+query Expenses($cursor: String, $from: ISO8601DateTime!) {
+  expenses(
+    filter: { date: { from: $from } }
+    first: 50
+    after: $cursor
+  ) {
     nodes {
       id
       description
@@ -163,18 +167,15 @@ query Expenses($cursor: String) {
 def fetch_expenses_since(start_date):
     """Return all expenses with `date` on or after start_date (date object).
 
-    Filter is applied in Python since we don't yet know the exact filter shape
-    on ExpenseFilterAttributes. Once the introspection confirms it, this can
-    move server-side. For now we paginate all and skip older rows; if we hit
-    a page that's entirely older than start_date we stop early.
+    Uses Jobber's server-side ExpenseFilterAttributes.date range filter.
     """
     expenses = []
     cursor = None
-    start_iso = start_date.isoformat()
-    consecutive_old_pages = 0
+    # ExpenseFilter.date expects Iso8601DateTimeRangeInput -> use a full timestamp
+    start_dt_iso = f"{start_date.isoformat()}T00:00:00Z"
 
     while True:
-        data = graphql_request(EXPENSES_QUERY, {"cursor": cursor})
+        data = graphql_request(EXPENSES_QUERY, {"cursor": cursor, "from": start_dt_iso})
         if not data:
             logger.error("Expenses: graphql_request returned None")
             break
@@ -187,38 +188,23 @@ def fetch_expenses_since(start_date):
             logger.error(f"Expenses: unexpected shape: {json.dumps(data)[:500]}")
             break
 
-        page_nodes = exp_data.get("nodes", [])
-        page_kept = 0
-        for node in page_nodes:
-            exp_date = (node.get("date") or "")[:10]
-            if exp_date and exp_date < start_iso:
-                continue
+        for node in exp_data.get("nodes", []):
             expenses.append({
                 "id": node.get("id"),
                 "description": (node.get("description") or "").strip(),
                 "title": (node.get("title") or "").strip(),
                 "total": float(node.get("total") or 0),
-                "date": exp_date,
+                "date": (node.get("date") or "")[:10],
                 "created_at": (node.get("createdAt") or "")[:10],
                 "paid_by": node.get("paidBy", ""),
             })
-            page_kept += 1
-
-        # If a whole page returned no in-window rows AND results look chronological,
-        # bail out after two consecutive empty pages (defensive against unknown sort order).
-        if page_kept == 0 and page_nodes:
-            consecutive_old_pages += 1
-            if consecutive_old_pages >= 2:
-                break
-        else:
-            consecutive_old_pages = 0
 
         page_info = exp_data.get("pageInfo", {})
         if not page_info.get("hasNextPage"):
             break
         cursor = page_info.get("endCursor")
 
-    logger.info(f"Expenses: kept {len(expenses)} on/after {start_iso}")
+    logger.info(f"Expenses: fetched {len(expenses)} since {start_dt_iso}")
     return expenses
 
 
@@ -245,8 +231,12 @@ def expenses_for_vendor(expenses, parse_patterns):
 # period (last Sunday, inclusive). Hours worked Monday onward = unpaid.
 
 TIME_ENTRIES_QUERY = """
-query TimeEntries($cursor: String) {
-  timeSheetEntries(first: 50, after: $cursor) {
+query TimeEntries($cursor: String, $from: ISO8601DateTime!) {
+  timeSheetEntries(
+    filter: { startAt: { from: $from } }
+    first: 50
+    after: $cursor
+  ) {
     nodes {
       id
       startAt
@@ -324,22 +314,18 @@ def fetch_users():
 
 
 def fetch_time_entries_since(start_dt):
-    """Return time entries with startAt on or after start_dt.
+    """Return time entries with startAt on or after start_dt (datetime).
 
-    Each entry carries its own labourRate, so we use that directly for the
-    payroll accrual rather than looking up a per-user rate.
-
-    Filter is applied in Python for now (TimeSheetEntriesFilterAttributes
-    shape still being introspected). Early-exits when we see two consecutive
-    pages of all-older entries.
+    Uses Jobber's server-side TimeSheetEntriesFilterAttributes.startAt
+    range filter. Each entry carries its own labourRate.
     """
     entries = []
     cursor = None
-    start_iso = start_dt.isoformat()
-    consecutive_old_pages = 0
+    # Filter expects ISO8601DateTime
+    from_iso = start_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
     while True:
-        data = graphql_request(TIME_ENTRIES_QUERY, {"cursor": cursor})
+        data = graphql_request(TIME_ENTRIES_QUERY, {"cursor": cursor, "from": from_iso})
         if not data:
             break
         if data.get("errors"):
@@ -350,37 +336,24 @@ def fetch_time_entries_since(start_dt):
         if not t_data:
             break
 
-        page_nodes = t_data.get("nodes", [])
-        page_kept = 0
-        for node in page_nodes:
-            start_at = node.get("startAt") or ""
-            if start_at and start_at < start_iso:
-                continue
+        for node in t_data.get("nodes", []):
             user = node.get("user") or {}
             entries.append({
                 "id": node.get("id"),
                 "user_id": user.get("id"),
                 "user_name": ((user.get("name") or {}).get("full") or ""),
-                "start_at": start_at,
+                "start_at": node.get("startAt"),
                 "end_at": node.get("endAt"),
                 "duration_seconds": float(node.get("finalDuration") or 0),
                 "labour_rate": float(node.get("labourRate") or 0),
             })
-            page_kept += 1
-
-        if page_kept == 0 and page_nodes:
-            consecutive_old_pages += 1
-            if consecutive_old_pages >= 2:
-                break
-        else:
-            consecutive_old_pages = 0
 
         page_info = t_data.get("pageInfo", {})
         if not page_info.get("hasNextPage"):
             break
         cursor = page_info.get("endCursor")
 
-    logger.info(f"Time entries: kept {len(entries)} on/after {start_iso}")
+    logger.info(f"Time entries: fetched {len(entries)} since {from_iso}")
     return entries
 
 
