@@ -142,7 +142,7 @@ def fetch_open_invoices():
 EXPENSES_QUERY = """
 query Expenses($cursor: String, $from: ISO8601DateTime!) {
   expenses(
-    filter: { date: { from: $from } }
+    filter: { date: { after: $from } }
     first: 50
     after: $cursor
   ) {
@@ -233,7 +233,7 @@ def expenses_for_vendor(expenses, parse_patterns):
 TIME_ENTRIES_QUERY = """
 query TimeEntries($cursor: String, $from: ISO8601DateTime!) {
   timeSheetEntries(
-    filter: { startAt: { from: $from } }
+    filter: { startAt: { after: $from } }
     first: 50
     after: $cursor
   ) {
