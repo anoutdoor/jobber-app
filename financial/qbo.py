@@ -41,13 +41,16 @@ def _api_base():
 # ---------------------------------------------------------------------------
 
 def load_tokens():
+    # Prefer env var on Railway (survives redeploys); fall back to file for local dev.
+    env_blob = os.getenv("QBO_TOKEN_STORE")
+    if env_blob:
+        try:
+            return json.loads(env_blob)
+        except json.JSONDecodeError:
+            logger.error("QBO_TOKEN_STORE env var is not valid JSON.")
     if os.path.exists(TOKEN_STORE_FILE):
         with open(TOKEN_STORE_FILE) as f:
             return json.load(f)
-    # Allow env-based override for Railway: QBO_TOKEN_STORE as JSON blob
-    env_blob = os.getenv("QBO_TOKEN_STORE")
-    if env_blob:
-        return json.loads(env_blob)
     return {}
 
 
@@ -59,8 +62,17 @@ def save_tokens(access_token, refresh_token, realm_id):
     }
     with open(TOKEN_STORE_FILE, "w") as f:
         json.dump(payload, f)
+    blob = json.dumps(payload)
     if os.getenv("QBO_TOKEN_STORE"):
-        logger.info("QBO token refreshed. Update QBO_TOKEN_STORE env var in Railway.")
+        logger.info(
+            "QBO token refreshed. To survive next Railway deploy, update "
+            "QBO_TOKEN_STORE env var to: %s", blob
+        )
+    else:
+        logger.info(
+            "QBO token saved to file. For Railway persistence across "
+            "deploys, set QBO_TOKEN_STORE env var to: %s", blob
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -267,13 +279,25 @@ def register_routes(app):
     @app.route("/qbo/test")
     def qbo_test():
         from financial.config import qbo_settings as _qbo_cfg
-        excluded = (_qbo_cfg().get("api") or {}).get("excluded_account_ids") or []
-        accounts = fetch_account_balances()
-        return jsonify({
-            "accounts": accounts,
-            "summary": summarize_balances(accounts, excluded_ids=excluded),
-            "excluded_account_ids": excluded,
-        })
+        tokens = load_tokens()
+        if not tokens.get("access_token") or not tokens.get("realm_id"):
+            return jsonify({
+                "error": "QBO not authorized",
+                "message": "No QBO tokens found. Visit /qbo/login to authorize. "
+                           "Note: Railway redeploys wipe the local token file. "
+                           "Set QBO_TOKEN_STORE env var to persist across deploys.",
+            }), 400
+        try:
+            excluded = (_qbo_cfg().get("api") or {}).get("excluded_account_ids") or []
+            accounts = fetch_account_balances()
+            return jsonify({
+                "accounts": accounts,
+                "summary": summarize_balances(accounts, excluded_ids=excluded),
+                "excluded_account_ids": excluded,
+            })
+        except Exception as e:
+            logger.exception("QBO test failed")
+            return jsonify({"error": "QBO test failed", "details": str(e)}), 500
 
     @app.route("/qbo/disconnect")
     def qbo_disconnect():
