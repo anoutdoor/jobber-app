@@ -103,6 +103,13 @@ query GetClosedJobs($cursor: String) {
 # ---------------------------------------------------------------------------
 
 def load_tokens():
+    # Prefer env var on Railway (survives redeploys); fall back to file for local dev.
+    env_blob = os.getenv("JOBBER_TOKEN_STORE")
+    if env_blob:
+        try:
+            return json.loads(env_blob)
+        except json.JSONDecodeError:
+            logger.error("JOBBER_TOKEN_STORE env var is not valid JSON.")
     if os.path.exists(TOKEN_STORE_FILE):
         with open(TOKEN_STORE_FILE) as f:
             return json.load(f)
@@ -110,8 +117,20 @@ def load_tokens():
 
 
 def save_tokens(access_token, refresh_token):
+    payload = {"access_token": access_token, "refresh_token": refresh_token}
     with open(TOKEN_STORE_FILE, "w") as f:
-        json.dump({"access_token": access_token, "refresh_token": refresh_token}, f)
+        json.dump(payload, f)
+    blob = json.dumps(payload)
+    if os.getenv("JOBBER_TOKEN_STORE"):
+        logger.info(
+            "Jobber tokens refreshed. To survive next Railway deploy, "
+            "update JOBBER_TOKEN_STORE env var to: %s", blob
+        )
+    else:
+        logger.info(
+            "Jobber tokens saved to file. For Railway persistence across "
+            "deploys, set JOBBER_TOKEN_STORE env var to: %s", blob
+        )
 
 
 def refresh_access_token():
