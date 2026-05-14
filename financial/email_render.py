@@ -114,6 +114,16 @@ def render_email(snapshot, today=None):
         for a in qbo.get("cc_accounts", [])
     ) or "<tr><td>No credit card accounts found</td></tr>"
 
+    books_through = qbo.get("books_through")
+    freshness_note = ""
+    if books_through:
+        freshness_note = (
+            f"<div style='font-size:11px;color:#888;margin-top:4px'>"
+            f"QBO books current through {escape(str(books_through))} "
+            f"(based on most recent Purchase transaction). "
+            f"Live bank balances may differ — see overrides if pinned.</div>"
+        )
+
     cash_html = (
         _section_header("Bank & CC detail")
         + "<table style='width:100%;font-family:Helvetica,Arial,sans-serif;font-size:13px;border-collapse:collapse'>"
@@ -122,6 +132,7 @@ def render_email(snapshot, today=None):
         + "<tr><td colspan='2' style='font-weight:600;padding:4px 8px;background:#fdeeee'>Credit cards (debt)</td></tr>"
         + cc_rows
         + "</table>"
+        + freshness_note
     )
 
     # --- AR ---

@@ -173,6 +173,27 @@ def _api_get(path, access_token=None, _retry=True):
     return resp.json()
 
 
+_RECENT_TXN_QUERY = (
+    "SELECT TxnDate FROM Purchase "
+    "ORDER BY TxnDate DESC MAXRESULTS 1"
+)
+
+
+def fetch_most_recent_txn_date():
+    """Return the date string of the most recent Purchase transaction posted
+    to QBO. Useful as a 'books current through' freshness signal — if it's
+    days old, the books are lagging behind the bank feed.
+    """
+    path = f"/query?query={requests.utils.quote(_RECENT_TXN_QUERY)}&minorversion=70"
+    data = _api_get(path)
+    if not data:
+        return None
+    purchases = ((data.get("QueryResponse") or {}).get("Purchase") or [])
+    if not purchases:
+        return None
+    return purchases[0].get("TxnDate")
+
+
 def fetch_account_balances():
     """Return list of dicts:
         {id, name, type, subtype, balance, currency}

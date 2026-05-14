@@ -8,7 +8,7 @@ import logging
 from datetime import date
 
 from financial.config import email_settings, anomaly_settings, qbo_settings
-from financial.qbo import fetch_account_balances, summarize_balances
+from financial.qbo import fetch_account_balances, summarize_balances, fetch_most_recent_txn_date
 from financial.jobber_finance import fetch_open_invoices
 from financial.overhead_sheet import fetch_upcoming_bills
 from financial.compute import (
@@ -158,9 +158,11 @@ def build_snapshot(today=None):
             accounts, excluded_ids=excluded, overrides=overrides
         )
         qbo_summary["mode"] = "api"
+        qbo_summary["books_through"] = fetch_most_recent_txn_date()
         logger.info(
             f"QBO: api mode, excluded {len(excluded)} account(s), "
-            f"overrode {len(overrides)} account(s)"
+            f"overrode {len(overrides)} account(s), "
+            f"books_through={qbo_summary.get('books_through')}"
         )
 
     invoices = fetch_open_invoices()

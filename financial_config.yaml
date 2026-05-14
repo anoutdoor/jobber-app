@@ -27,16 +27,36 @@ qbo:
     #
     # Values are in "human" sign convention: positive for Bank cash on hand,
     # positive for CC debt. Update as_of when you refresh the number.
-    balance_overrides: {}
-    # Example:
-    # balance_overrides:
-    #   "48":            # Capital One Credit card
-    #     balance: 12601.48
-    #     as_of: "2026-05-14"
-    #     note: "Real bank balance per QBO UI"
-    #   "89":            # 6540 Niko Chase Business Cash Card
-    #     balance: 49.78
-    #     as_of: "2026-05-14"
+    balance_overrides:
+      # Bank accounts
+      "94":             # 0607 Axos Savings
+        balance: 3070.42
+        as_of: "2026-05-14"
+      "38":             # Chase Checking (6906) — main operating
+        balance: 72441.89
+        as_of: "2026-05-14"
+      # Credit cards
+      "92":             # 0749 Niko Chase Business Unlimited
+        balance: 103.15
+        as_of: "2026-05-14"
+      "1150040017":     # 1757 (4091 parent subaccount)
+        balance: 0.00
+        as_of: "2026-05-14"
+      "88":             # 4971 A. ROGEL - 2
+        balance: 0.00
+        as_of: "2026-05-14"
+      "89":             # 6540 Niko Chase Business Cash Card
+        balance: 49.78
+        as_of: "2026-05-14"
+      "68":             # 4091 Alex Chase Business Cash Credit card
+        balance: 0.00
+        as_of: "2026-05-14"
+      "1150040024":     # Capital One Spark 2% Alex
+        balance: 7850.54
+        as_of: "2026-05-14"
+      "48":             # Capital One Credit card
+        balance: 12601.48
+        as_of: "2026-05-14"
   manual:
     as_of: null         # set to today's ISO date when you update the numbers
     cash_accounts:      # bank accounts: positive numbers = cash you have

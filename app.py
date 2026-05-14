@@ -11,6 +11,7 @@ from dashboard import compute_dashboard
 from backfill import run_backfill
 from scheduler import start_scheduler, stop_scheduler
 from financial import qbo as financial_qbo
+from financial import google_auth as financial_google_auth
 from financial.digest import run_digest
 
 load_dotenv()
@@ -76,6 +77,7 @@ def index():
             "<h2>Jobber Job Costing — Connected</h2>"
             + sync_info
             + qbo_section
+            + "<p><a href='/google/login'>Re-authorize Google (Sheets + Gmail Send)</a></p>"
             + "<p><a href='/dashboard'><strong>→ Open Dashboard</strong></a></p>"
             + "<p><a href='/sync-now'>Run Sync Now</a></p>"
             + "<p><a href='/backfill'>Run Historical Backfill (Jan 1 2026 – Today)</a></p>"
@@ -499,6 +501,7 @@ def privacy():
 # ---------------------------------------------------------------------------
 
 financial_qbo.register_routes(app)
+financial_google_auth.register_routes(app)
 
 
 if __name__ == "__main__":
