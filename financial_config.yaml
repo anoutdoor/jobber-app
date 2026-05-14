@@ -93,6 +93,7 @@ vendors:
 overhead:
   bills:
     - {expense: "Yard Spot @ DP",                   amount: 825.00,  account: "Co CC",       billing_day: 1,  category: "Rent"}
+    - {expense: "Public Storage",                   amount: 35.00,   account: "Co CC",       billing_day: 1,  category: "Rent"}
     - {expense: "Skid Finance",                     amount: 711.28,  account: "Chase Debit", billing_day: 26, category: "Financing Payment"}
     - {expense: "Workers Comp Insurance",           amount: 707.83,  account: "Chase Debit", billing_day: 28, category: "Insurance"}
     - {expense: "Ford Escape Auto Insurance",       amount: 214.00,  account: "Chase Debit", billing_day: 16, category: "Insurance"}
