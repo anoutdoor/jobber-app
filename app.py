@@ -6,6 +6,7 @@ import requests
 from dotenv import load_dotenv
 
 from flask import Flask, redirect, request, session, url_for, jsonify, render_template
+from werkzeug.middleware.proxy_fix import ProxyFix
 from jobber_sync import save_tokens, run_sync, read_last_sync, reconcile_daily_overhead
 from dashboard import compute_dashboard
 from backfill import run_backfill
@@ -19,6 +20,11 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", secrets.token_hex(32))
+
+# Railway terminates SSL at the proxy and forwards as HTTP, so Flask sees http://
+# unless we trust the X-Forwarded-* headers. Without this, request.url_root returns
+# http://... in production, which breaks OAuth redirect_uri matching.
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1, x_for=1)
 
 CLIENT_ID = os.getenv("JOBBER_CLIENT_ID")
 CLIENT_SECRET = os.getenv("JOBBER_CLIENT_SECRET")
