@@ -23,7 +23,10 @@ SYNCED_JOBS_FILE = "synced_jobs.json"
 LAST_SYNC_FILE = "last_sync.txt"
 GOOGLE_TOKEN_FILE = "token.json"
 
-GOOGLE_SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
+GOOGLE_SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/gmail.send",
+]
 GOOGLE_CLIENT_SECRETS_FILE = os.getenv("GOOGLE_CLIENT_SECRETS_FILE", "client_secrets.json")
 SHEET_ID = os.getenv("GOOGLE_SHEET_ID")
 

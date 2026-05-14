@@ -10,3 +10,5 @@ token.json
 token_store.json
 synced_jobs.json
 last_sync.txt
+qbo_token_store.json
+last_financial_snapshot.json

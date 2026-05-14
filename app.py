@@ -10,6 +10,8 @@ from jobber_sync import save_tokens, run_sync, read_last_sync, reconcile_daily_o
 from dashboard import compute_dashboard
 from backfill import run_backfill
 from scheduler import start_scheduler, stop_scheduler
+from financial import qbo as financial_qbo
+from financial.digest import run_digest
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -64,13 +66,23 @@ def index():
                 + "</p>"
             )
 
+        qbo_connected = bool(financial_qbo.load_tokens().get("access_token"))
+        qbo_section = (
+            "<p style='color:green'>QBO: connected</p>" if qbo_connected
+            else "<p><a href='/qbo/login'><strong>Connect QuickBooks Online</strong></a></p>"
+        )
+
         return (
             "<h2>Jobber Job Costing — Connected</h2>"
             + sync_info
+            + qbo_section
             + "<p><a href='/dashboard'><strong>→ Open Dashboard</strong></a></p>"
             + "<p><a href='/sync-now'>Run Sync Now</a></p>"
             + "<p><a href='/backfill'>Run Historical Backfill (Jan 1 2026 – Today)</a></p>"
             + "<p><a href='/reconcile-now'>Run Overhead Reconciliation Now</a></p>"
+            + "<p><a href='/digest-now?dry=1'>Preview Cashflow Digest (no email)</a></p>"
+            + "<p><a href='/digest-now'>Send Cashflow Digest Now</a></p>"
+            + "<p><a href='/qbo/test'>Test QBO Balance Pull</a></p>"
             + "<p><a href='/logout'>Logout</a></p>"
         )
 
@@ -156,6 +168,17 @@ def reconcile_now():
         return redirect(url_for("login"))
     result = reconcile_daily_overhead()
     return jsonify(result)
+
+
+@app.route("/digest-now")
+def digest_now():
+    if "access_token" not in session:
+        return redirect(url_for("login"))
+    dry = request.args.get("dry") == "1"
+    result = run_digest(dry_run=dry)
+    if dry and "html" in result:
+        return result["html"]
+    return jsonify({k: v for k, v in result.items() if k != "html"})
 
 
 @app.route("/backfill")
@@ -317,8 +340,127 @@ def logout():
 
 
 # ---------------------------------------------------------------------------
+# Legal pages (for Intuit app review: EULA + Privacy Policy)
+# ---------------------------------------------------------------------------
+
+_LEGAL_STYLE = (
+    "max-width:760px;margin:40px auto;padding:24px;"
+    "font-family:Helvetica,Arial,sans-serif;color:#222;line-height:1.5"
+)
+
+
+@app.route("/eula")
+def eula():
+    return f"""
+    <!doctype html><html><body style='{_LEGAL_STYLE}'>
+    <h1>End-User License Agreement</h1>
+    <p><strong>A&amp;N Cashflow</strong> ("the App") is an internal financial reporting tool
+    operated by A&amp;N Outdoor Services LLC ("A&amp;N", "we", "our"). Last updated:
+    May 13, 2026.</p>
+
+    <h2>1. License Grant</h2>
+    <p>This App is licensed for internal use by A&amp;N Outdoor Services LLC and its
+    authorized personnel only. It is not licensed for distribution, resale, or use
+    by any third party. By connecting your QuickBooks Online account, you grant the
+    App permission to read account-level financial data on your behalf.</p>
+
+    <h2>2. Permitted Use</h2>
+    <p>The App is provided solely to enable A&amp;N to view consolidated cashflow
+    information drawn from its own QuickBooks Online company, Jobber account, and
+    related operational systems. Use of the App for any other purpose is prohibited.</p>
+
+    <h2>3. No Warranties</h2>
+    <p>The App is provided "as is" without warranties of any kind, express or implied.
+    A&amp;N makes no warranty that the App will be error-free or that the financial
+    information it displays is suitable for accounting, tax, or compliance purposes.
+    Authoritative financial records remain in QuickBooks Online and Jobber.</p>
+
+    <h2>4. Limitation of Liability</h2>
+    <p>In no event shall A&amp;N be liable for any indirect, incidental, or
+    consequential damages arising out of the use of, or inability to use, the App.</p>
+
+    <h2>5. Termination</h2>
+    <p>You may terminate this agreement at any time by disconnecting the App from
+    your QuickBooks Online account or revoking access in your Intuit account
+    settings.</p>
+
+    <h2>6. Governing Law</h2>
+    <p>This agreement is governed by the laws of the State of Illinois, United States.</p>
+
+    <h2>7. Contact</h2>
+    <p>Questions: <a href='mailto:alex@anoutdoorservices.com'>alex@anoutdoorservices.com</a></p>
+    </body></html>
+    """
+
+
+@app.route("/privacy")
+def privacy():
+    return f"""
+    <!doctype html><html><body style='{_LEGAL_STYLE}'>
+    <h1>Privacy Policy</h1>
+    <p><strong>A&amp;N Cashflow</strong> is operated by A&amp;N Outdoor Services LLC.
+    Last updated: May 13, 2026.</p>
+
+    <h2>1. Who We Are</h2>
+    <p>A&amp;N Outdoor Services LLC, a landscaping and outdoor services company based
+    in Arlington Heights, Illinois, United States.</p>
+
+    <h2>2. What Data We Access</h2>
+    <p>When connected to QuickBooks Online, the App reads the following data from
+    your QuickBooks company:</p>
+    <ul>
+      <li>Account names, types, and current balances for Bank and Credit Card accounts</li>
+    </ul>
+    <p>The App does not access, store, or transmit transaction-level data, customer
+    information, vendor information, employee data, or payroll data from QuickBooks
+    Online.</p>
+
+    <h2>3. Why We Access It</h2>
+    <p>This data is used solely to compute and email an internal daily cashflow
+    summary to authorized A&amp;N personnel.</p>
+
+    <h2>4. Who Sees the Data</h2>
+    <p>The App is for internal use by A&amp;N Outdoor Services LLC. Data is not
+    shared with, sold to, or disclosed to any third party. The App does not have
+    public users.</p>
+
+    <h2>5. Where Data Is Stored</h2>
+    <p>OAuth tokens are stored in encrypted environment variables on Railway, our
+    hosting provider. Daily snapshot data is stored on Railway in the App's own
+    storage. We do not maintain a separate user database.</p>
+
+    <h2>6. Data Retention</h2>
+    <p>OAuth tokens are retained for as long as the App is connected to your
+    QuickBooks Online company. Upon disconnection, tokens are deleted and no
+    further data is accessed. Past daily snapshots may be retained in encrypted
+    form for historical comparison.</p>
+
+    <h2>7. Your Rights</h2>
+    <p>You may disconnect the App at any time via your Intuit account settings or
+    by visiting our disconnect URL. Disconnection immediately revokes the App's
+    access.</p>
+
+    <h2>8. Security</h2>
+    <p>All connections to QuickBooks Online use HTTPS and OAuth 2.0. Tokens are
+    never logged, displayed, or transmitted outside of authenticated API calls
+    to Intuit.</p>
+
+    <h2>9. Changes to This Policy</h2>
+    <p>If this policy materially changes, we will update the date at the top of
+    this page.</p>
+
+    <h2>10. Contact</h2>
+    <p>Questions: <a href='mailto:alex@anoutdoorservices.com'>alex@anoutdoorservices.com</a></p>
+    </body></html>
+    """
+
+
+# ---------------------------------------------------------------------------
 # Startup / teardown
 # ---------------------------------------------------------------------------
+
+financial_qbo.register_routes(app)
+
 
 if __name__ == "__main__":
     if not CLIENT_ID or not CLIENT_SECRET:
@@ -326,7 +468,7 @@ if __name__ == "__main__":
 
     # Avoid double-start from Flask's reloader spawning a second process
     if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not app.debug:
-        start_scheduler(run_sync, reconcile_daily_overhead)
+        start_scheduler(run_sync, reconcile_daily_overhead, digest_fn=run_digest)
 
     import atexit
     atexit.register(stop_scheduler)
