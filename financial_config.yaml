@@ -66,13 +66,30 @@ vendors:
     manual_balance: 3000.00
     manual_balance_as_of: "2026-05-14"
 
-# Recurring overhead spreadsheet (the one with rent, insurance, subscriptions etc.)
-# Expects column headers: Monthly Expense, Amount, Account, Billing Date, Notes, Category, Fixed/Variable
-# NOTE: tab_name will need to change each month (e.g. "June Fixed Overhead"). Worth auto-detecting later.
+# Recurring overhead bills. Edit this list directly when something changes.
+# billing_day = day-of-month the bill hits (1-31). Leave null if irregular/unknown.
+# amount      = dollar amount. Leave null if N/A or variable.
+# A bill needs both amount AND billing_day to forecast into the next 7/14/30 day windows.
 overhead:
-  sheet_id: "1bA5GRyV-yfTaQc-dNVNBLulsINkRX-tV-LPQ1I6WAfs"
-  sheet_id_env: FINANCIAL_OVERHEAD_SHEET_ID   # fallback if sheet_id above is unset
-  tab_name: "May Fixed Overhead"
+  bills:
+    - {expense: "Yard Spot @ DP",                   amount: 825.00,  account: "Co CC",       billing_day: 1,  category: "Rent"}
+    - {expense: "Skid Finance",                     amount: 711.28,  account: "Chase Debit", billing_day: 26, category: "Financing Payment"}
+    - {expense: "Workers Comp Insurance",           amount: 707.83,  account: "Chase Debit", billing_day: 28, category: "Insurance"}
+    - {expense: "Ford Escape Auto Insurance",       amount: 214.00,  account: "Chase Debit", billing_day: 16, category: "Insurance"}
+    - {expense: "Dump 1 + Dump 2 + Ford Insurance", amount: 910.00,  account: "Co CC",       billing_day: 3,  category: "Insurance", notes: "3/3, 4/3, 5/3 payments; covered through 7/3"}
+    - {expense: "GL Insurance",                     amount: 183.95,  account: "Co CC",       billing_day: 20, category: "Insurance"}
+    - {expense: "Quickbooks",                       amount: 40.00,   account: "Co CC",       billing_day: 16, category: "Software & Subscriptions"}
+    - {expense: "Jobber",                           amount: 420.00,  account: "Co CC",       billing_day: 10, category: "Software & Subscriptions"}
+    - {expense: "Yard Camera Data Subscription",    amount: 40.00,   account: "Co CC",       billing_day: 15, category: "Software & Subscriptions"}
+    - {expense: "Motive Fleet Management",          amount: 150.52,  account: "Chase Debit", billing_day: 19, category: "Software & Subscriptions"}
+    - {expense: "Company Cam",                      amount: 251.00,  account: "Co CC",       billing_day: 12, category: "Software & Subscriptions"}
+    - {expense: "Google",                           amount: 40.00,   account: "Co CC",       billing_day: 1,  category: "Software & Subscriptions"}
+    - {expense: "chatGPT",                          amount: 20.00,   account: "Co CC",       billing_day: 17, category: "Software & Subscriptions"}
+    - {expense: "OpenPhone",                        amount: 166.50,  account: "Co CC",       billing_day: 15, category: "Software & Subscriptions"}
+    - {expense: "QB Payroll",                       amount: 135.00,  account: "Chase Debit", billing_day: null, category: "Software & Subscriptions", notes: "Billed to Rich; billing date irregular"}
+    - {expense: "Bookkeeping services",             amount: 445.00,  account: "Chase Debit", billing_day: null, category: "Software & Subscriptions", notes: "Rich; billing date kind of random"}
+    - {expense: "Accountant Fees",                  amount: null,    account: "",            billing_day: null, category: "", notes: "Might be quarterly; amount TBD"}
+    - {expense: "Henry Harrigan SEO",               amount: 1400.00, account: "Co CC",       billing_day: 22, category: "Marketing"}
 
 # Payroll accrual
 # Work week: Monday through Sunday. Paid out the following Thursday.
