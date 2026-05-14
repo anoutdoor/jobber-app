@@ -53,24 +53,26 @@ vendors:
   - name: "Lurvey's"
     parse_patterns: ["lurvey"]
     auto: false
-    manual_balance: null
-    manual_balance_as_of: null
+    manual_balance: 5926.47
+    manual_balance_as_of: "2026-05-14"
   - name: "Des Plaines Material"
     parse_patterns: ["des plaines"]
     auto: false
-    manual_balance: null
-    manual_balance_as_of: null
+    manual_balance: 1238.10
+    manual_balance_as_of: "2026-05-14"
   - name: "Patriot Materials"
     parse_patterns: ["patriot"]
     auto: false
-    manual_balance: null
-    manual_balance_as_of: null
+    manual_balance: 3000.00
+    manual_balance_as_of: "2026-05-14"
 
 # Recurring overhead spreadsheet (the one with rent, insurance, subscriptions etc.)
 # Expects column headers: Monthly Expense, Amount, Account, Billing Date, Notes, Category, Fixed/Variable
+# NOTE: tab_name will need to change each month (e.g. "June Fixed Overhead"). Worth auto-detecting later.
 overhead:
-  sheet_id_env: FINANCIAL_OVERHEAD_SHEET_ID   # set this in .env
-  tab_name: "Monthly Expenses"                # change if your tab is named differently
+  sheet_id: "1bA5GRyV-yfTaQc-dNVNBLulsINkRX-tV-LPQ1I6WAfs"
+  sheet_id_env: FINANCIAL_OVERHEAD_SHEET_ID   # fallback if sheet_id above is unset
+  tab_name: "May Fixed Overhead"
 
 # Payroll accrual
 # Work week: Monday through Sunday. Paid out the following Thursday.

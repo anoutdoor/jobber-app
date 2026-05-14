@@ -27,7 +27,10 @@ def vendors():
 
 def overhead_settings():
     cfg = load_config()["overhead"]
-    sheet_id = os.getenv(cfg["sheet_id_env"])
+    # Prefer an explicit sheet_id in the config; fall back to env var.
+    sheet_id = cfg.get("sheet_id")
+    if not sheet_id and cfg.get("sheet_id_env"):
+        sheet_id = os.getenv(cfg["sheet_id_env"])
     return {"sheet_id": sheet_id, "tab_name": cfg["tab_name"]}
 
 
