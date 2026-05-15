@@ -31,32 +31,32 @@ qbo:
       # Bank accounts
       "94":             # 0607 Axos Savings
         balance: 3070.42
-        as_of: "2026-05-14"
+        as_of: "2026-05-15"
       "38":             # Chase Checking (6906) — main operating
-        balance: 72441.89
-        as_of: "2026-05-14"
+        balance: 57704.17
+        as_of: "2026-05-15"
       # Credit cards
       "92":             # 0749 Niko Chase Business Unlimited
-        balance: 103.15
-        as_of: "2026-05-14"
+        balance: 214.97
+        as_of: "2026-05-15"
       "1150040017":     # 1757 (4091 parent subaccount)
         balance: 0.00
-        as_of: "2026-05-14"
+        as_of: "2026-05-15"
       "88":             # 4971 A. ROGEL - 2
         balance: 0.00
-        as_of: "2026-05-14"
+        as_of: "2026-05-15"
       "89":             # 6540 Niko Chase Business Cash Card
         balance: 49.78
-        as_of: "2026-05-14"
+        as_of: "2026-05-15"
       "68":             # 4091 Alex Chase Business Cash Credit card
-        balance: 0.00
-        as_of: "2026-05-14"
+        balance: 71.19
+        as_of: "2026-05-15"
       "1150040024":     # Capital One Spark 2% Alex
-        balance: 7850.54
-        as_of: "2026-05-14"
+        balance: 7949.54
+        as_of: "2026-05-15"
       "48":             # Capital One Credit card
-        balance: 12601.48
-        as_of: "2026-05-14"
+        balance: 12900.61
+        as_of: "2026-05-15"
   manual:
     as_of: null         # set to today's ISO date when you update the numbers
     cash_accounts:      # bank accounts: positive numbers = cash you have
