@@ -41,11 +41,22 @@ def _api_base():
 # ---------------------------------------------------------------------------
 
 def load_tokens():
-    # Prefer the file (freshest after each refresh). Env var is a fallback used
-    # to seed tokens after a Railway redeploy wipes the filesystem.
+    # Priority order:
+    #   1. Sheets-backed persistent store (survives Railway redeploys)
+    #   2. Local file (fast path; valid within one deploy)
+    #   3. Env var seed (last-ditch fallback)
+    try:
+        from financial.token_persistence import read_tokens as _read_sheets
+        sheets_tokens = _read_sheets("qbo")
+        if sheets_tokens.get("access_token"):
+            return sheets_tokens
+    except Exception as e:
+        logger.warning(f"QBO: Sheets token read failed ({e}); falling back.")
+
     if os.path.exists(TOKEN_STORE_FILE):
         with open(TOKEN_STORE_FILE) as f:
             return json.load(f)
+
     env_blob = os.getenv("QBO_TOKEN_STORE")
     if env_blob:
         try:
@@ -66,17 +77,11 @@ def save_tokens(access_token, refresh_token, realm_id):
     }
     with open(TOKEN_STORE_FILE, "w") as f:
         json.dump(payload, f)
-    blob = json.dumps(payload)
-    if os.getenv("QBO_TOKEN_STORE"):
-        logger.info(
-            "QBO token refreshed. To survive next Railway deploy, update "
-            "QBO_TOKEN_STORE env var to: %s", blob
-        )
-    else:
-        logger.info(
-            "QBO token saved to file. For Railway persistence across "
-            "deploys, set QBO_TOKEN_STORE env var to: %s", blob
-        )
+    try:
+        from financial.token_persistence import write_tokens as _write_sheets
+        _write_sheets("qbo", payload)
+    except Exception as e:
+        logger.error(f"QBO: Sheets token write failed ({e}); only local file updated.")
 
 
 # ---------------------------------------------------------------------------

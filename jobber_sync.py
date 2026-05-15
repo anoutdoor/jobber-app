@@ -103,11 +103,22 @@ query GetClosedJobs($cursor: String) {
 # ---------------------------------------------------------------------------
 
 def load_tokens():
-    # Prefer the file (freshest after each refresh). Env var is a fallback used
-    # to seed tokens after a Railway redeploy wipes the filesystem.
+    # Priority order:
+    #   1. Sheets-backed persistent store (survives Railway redeploys)
+    #   2. Local file (fast path; valid within one deploy)
+    #   3. Env var seed (last-ditch fallback)
+    try:
+        from financial.token_persistence import read_tokens as _read_sheets
+        sheets_tokens = _read_sheets("jobber")
+        if sheets_tokens.get("access_token"):
+            return sheets_tokens
+    except Exception as e:
+        logger.warning(f"Jobber: Sheets token read failed ({e}); falling back.")
+
     if os.path.exists(TOKEN_STORE_FILE):
         with open(TOKEN_STORE_FILE) as f:
             return json.load(f)
+
     env_blob = os.getenv("JOBBER_TOKEN_STORE")
     if env_blob:
         try:
@@ -122,19 +133,15 @@ def load_tokens():
 
 def save_tokens(access_token, refresh_token):
     payload = {"access_token": access_token, "refresh_token": refresh_token}
+    # Always write to local file (fast cache for repeated reads within a deploy).
     with open(TOKEN_STORE_FILE, "w") as f:
         json.dump(payload, f)
-    blob = json.dumps(payload)
-    if os.getenv("JOBBER_TOKEN_STORE"):
-        logger.info(
-            "Jobber tokens refreshed. To survive next Railway deploy, "
-            "update JOBBER_TOKEN_STORE env var to: %s", blob
-        )
-    else:
-        logger.info(
-            "Jobber tokens saved to file. For Railway persistence across "
-            "deploys, set JOBBER_TOKEN_STORE env var to: %s", blob
-        )
+    # Persist to Sheets so the value survives the next redeploy.
+    try:
+        from financial.token_persistence import write_tokens as _write_sheets
+        _write_sheets("jobber", payload)
+    except Exception as e:
+        logger.error(f"Jobber: Sheets token write failed ({e}); only local file updated.")
 
 
 def refresh_access_token():
