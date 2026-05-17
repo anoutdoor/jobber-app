@@ -257,10 +257,16 @@ def run_digest(today=None, dry_run=False):
         logger.info("Dry run: not sending email.")
         return {"status": "dry_run", "subject": subject, "html": html, "snapshot": snapshot}
 
-    recipient = email_settings()["recipient"]
-    result = send_email(recipient, subject, html)
+    # Support both legacy `recipient` (single string) and `recipients` (list).
+    es = email_settings()
+    recipients = es.get("recipients") or ([es["recipient"]] if es.get("recipient") else [])
+    if not recipients:
+        return {"status": "error", "message": "No recipients configured"}
+    # Gmail accepts a comma-separated To: header for multiple recipients.
+    to_header = ", ".join(recipients)
+    result = send_email(to_header, subject, html)
 
     if result:
         _save_snapshot(snapshot)
-        return {"status": "ok", "subject": subject, "to": recipient, "message_id": result.get("id")}
+        return {"status": "ok", "subject": subject, "to": to_header, "message_id": result.get("id")}
     return {"status": "error", "message": "Gmail send failed (see logs)"}
