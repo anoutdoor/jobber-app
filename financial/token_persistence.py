@@ -56,28 +56,36 @@ def _ws():
 
 
 def read_tokens(provider):
-    """Return {access_token, refresh_token, realm_id} for the provider, or {}."""
-    try:
-        ws = _ws()
-    except Exception as e:
-        logger.warning(f"Token store: can't open sheet ({e})")
-        return {}
+    """Return {access_token, refresh_token, realm_id} for the provider, or {}.
 
-    try:
-        rows = ws.get_all_records()
-    except Exception as e:
-        logger.warning(f"Token store: can't read sheet rows ({e})")
-        return {}
+    Retries once on transient Sheets failures (Google API hiccups at the
+    exact moment of the 6am cron could otherwise blank out all three data
+    sources at once because they all chain through this).
+    """
+    import time as _time
 
-    for row in rows:
-        if str(row.get("provider", "")).lower() == provider.lower():
-            out = {
-                "access_token": row.get("access_token") or "",
-                "refresh_token": row.get("refresh_token") or "",
-            }
-            if row.get("realm_id"):
-                out["realm_id"] = row["realm_id"]
-            return out
+    last_err = None
+    for attempt in (1, 2):
+        try:
+            ws = _ws()
+            rows = ws.get_all_records()
+            for row in rows:
+                if str(row.get("provider", "")).lower() == provider.lower():
+                    out = {
+                        "access_token": row.get("access_token") or "",
+                        "refresh_token": row.get("refresh_token") or "",
+                    }
+                    if row.get("realm_id"):
+                        out["realm_id"] = row["realm_id"]
+                    return out
+            return {}
+        except Exception as e:
+            last_err = e
+            if attempt == 1:
+                logger.warning(f"Token store ({provider}): read attempt 1 failed ({e}); retrying in 2s.")
+                _time.sleep(2)
+            else:
+                logger.error(f"Token store ({provider}): read failed both attempts ({e}).")
     return {}
 
 
