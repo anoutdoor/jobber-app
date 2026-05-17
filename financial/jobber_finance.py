@@ -174,7 +174,6 @@ query Expenses($cursor: String, $from: ISO8601DateTime!) {
       total
       date
       createdAt
-      paidBy
     }
     pageInfo {
       hasNextPage
@@ -224,7 +223,6 @@ def fetch_expenses_since(start_date):
                 "total": float(node.get("total") or 0),
                 "date": (node.get("date") or "")[:10],
                 "created_at": (node.get("createdAt") or "")[:10],
-                "paid_by": node.get("paidBy", ""),
             })
 
         page_info = exp_data.get("pageInfo", {})
