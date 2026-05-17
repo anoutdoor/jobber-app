@@ -365,6 +365,7 @@ def fetch_time_entries_since(start_dt):
 
         got_first_response = True
 
+        page_node_count = 0
         for node in t_data.get("nodes", []):
             user = node.get("user") or {}
             entries.append({
@@ -376,13 +377,20 @@ def fetch_time_entries_since(start_dt):
                 "duration_seconds": float(node.get("finalDuration") or 0),
                 "labour_rate": float(node.get("labourRate") or 0),
             })
+            page_node_count += 1
 
         page_info = t_data.get("pageInfo", {})
+        logger.info(
+            f"Time entries page: got {page_node_count} entries "
+            f"(running total {len(entries)}), "
+            f"hasNextPage={page_info.get('hasNextPage')}, "
+            f"endCursor={(page_info.get('endCursor') or '')[:30]}"
+        )
         if not page_info.get("hasNextPage"):
             break
         cursor = page_info.get("endCursor")
 
-    logger.info(f"Time entries: fetched {len(entries)} since {from_iso}")
+    logger.info(f"Time entries: fetched {len(entries)} total since {from_iso}")
     return entries
 
 
