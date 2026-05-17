@@ -182,28 +182,54 @@ def graphql_request(query, variables=None, access_token=None, _retry=True):
     if not access_token:
         access_token = load_tokens().get("access_token")
 
-    resp = requests.post(
-        GRAPHQL_URL,
-        json={"query": query, "variables": variables or {}},
-        headers={
-            "Authorization": f"Bearer {access_token}",
-            "Content-Type": "application/json",
-            "X-JOBBER-GRAPHQL-VERSION": GRAPHQL_VERSION,
-        },
-    )
+    if not access_token:
+        logger.error("graphql_request: no access_token available before request.")
+        return None
+
+    try:
+        resp = requests.post(
+            GRAPHQL_URL,
+            json={"query": query, "variables": variables or {}},
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/json",
+                "X-JOBBER-GRAPHQL-VERSION": GRAPHQL_VERSION,
+            },
+            timeout=30,
+        )
+    except requests.exceptions.RequestException as e:
+        # Network error, timeout, etc. — surface so we don't silently return None.
+        logger.error(f"graphql_request: network error: {e}")
+        return None
 
     if resp.status_code == 401 and _retry:
         logger.info("Token expired — attempting refresh.")
         new_token = refresh_access_token()
         if new_token:
             return graphql_request(query, variables, new_token, _retry=False)
+        logger.error("graphql_request: refresh returned no token after 401.")
         return None
 
     if not resp.ok:
-        logger.error(f"GraphQL HTTP error {resp.status_code}: {resp.text}")
+        # Log the FULL response body so we can see exactly what Jobber returned
+        # on HTTP errors. Previously this was 'resp.text' but Python truncates
+        # very long messages in logs — explicit slicing makes the limit obvious.
+        logger.error(
+            f"graphql_request: HTTP {resp.status_code} from Jobber. "
+            f"Variables: {json.dumps(variables or {})[:300]}. "
+            f"Response body (first 2000 chars): {resp.text[:2000]}"
+        )
         return None
 
-    return resp.json()
+    body = resp.json()
+    # Some Jobber errors come back with HTTP 200 but populate 'errors' AND a null
+    # data field. Log a warning so we don't silently return broken data to callers.
+    if body.get("errors") and not body.get("data"):
+        logger.error(
+            f"graphql_request: 200 but errors-only body. "
+            f"Errors: {json.dumps(body.get('errors'))[:500]}"
+        )
+    return body
 
 
 def fetch_all_closed_jobs():
