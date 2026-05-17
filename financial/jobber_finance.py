@@ -473,7 +473,17 @@ query DebugTimesheets {
 _DEBUG_EXPENSES_RAW = """
 query DebugExpenses {
   expenses(first: 5) {
-    nodes { id title description total }
+    nodes { id title description total date createdAt }
+  }
+}
+"""
+
+# Mirrors fetch_expenses_since query shape so we can see if a recent test
+# expense is returned by the actual filter we use in production.
+_DEBUG_EXPENSES_FILTERED = """
+query DebugExpensesFiltered($from: ISO8601DateTime!) {
+  expenses(filter: { date: { after: $from } }, first: 20) {
+    nodes { id title description total date createdAt }
   }
 }
 """
@@ -543,6 +553,9 @@ def debug_all():
     week_start = today - _td(days=today.weekday())
     from_iso = week_start.strftime("%Y-%m-%dT00:00:00Z")
 
+    # Mirror production: padded 1 day back so same-day expenses are included
+    expenses_from = (today - _td(days=1)).strftime("%Y-%m-%dT00:00:00Z")
+
     return {
         "invoices_query": debug_run_query(_DEBUG_INVOICES_RAW),
         "users_query": debug_run_query(_DEBUG_USERS_RAW),
@@ -552,6 +565,10 @@ def debug_all():
             "response": debug_run_query(_DEBUG_TIMESHEETS_FILTERED, {"from": from_iso}),
         },
         "expenses_query": debug_run_query(_DEBUG_EXPENSES_RAW),
+        "expenses_filtered_query": {
+            "_filter_from": expenses_from,
+            "response": debug_run_query(_DEBUG_EXPENSES_FILTERED, {"from": expenses_from}),
+        },
         "introspect": debug_run_query(_INTROSPECT_QUERY),
     }
 
