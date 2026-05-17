@@ -353,6 +353,12 @@ def fetch_time_entries_since(start_dt):
 
         t_data = (data.get("data") or {}).get("timeSheetEntries")
         if not t_data:
+            # Log the FULL response so we can see exactly what Jobber sent back
+            # when timeSheetEntries comes back null/missing.
+            logger.error(
+                f"Time entries: t_data is missing/null. "
+                f"Full response (first 1000 chars): {json.dumps(data)[:1000]}"
+            )
             if not got_first_response:
                 return None
             break
@@ -424,6 +430,21 @@ query DebugExpenses {
 }
 """
 
+# Mirrors the production TIME_ENTRIES_QUERY shape exactly (filter + pagination)
+# so we can see whether the filter itself is the breaking change vs the
+# unfiltered debug query.
+_DEBUG_TIMESHEETS_FILTERED = """
+query DebugTSFiltered($from: ISO8601DateTime!) {
+  timeSheetEntries(filter: { startAt: { after: $from } }, first: 5) {
+    nodes {
+      id startAt endAt finalDuration labourRate
+      user { id name { full } }
+    }
+    pageInfo { hasNextPage endCursor }
+  }
+}
+"""
+
 # Schema introspection — ask Jobber for the actual fields on each type, plus
 # the argument shapes for the top-level queries AND the input fields of the
 # filter types. Stops the guessing game for filter syntax.
@@ -462,10 +483,20 @@ def debug_all():
     that's safe to dump as JSON. Lets us see which queries work and which
     error out with field-name issues.
     """
+    # Use the start of the current pay week for the filtered timesheets probe
+    from datetime import timedelta as _td
+    today = date.today()
+    week_start = today - _td(days=today.weekday())
+    from_iso = week_start.strftime("%Y-%m-%dT00:00:00Z")
+
     return {
         "invoices_query": debug_run_query(_DEBUG_INVOICES_RAW),
         "users_query": debug_run_query(_DEBUG_USERS_RAW),
         "timesheets_query": debug_run_query(_DEBUG_TIMESHEETS_RAW),
+        "timesheets_filtered_query": {
+            "_filter_from": from_iso,
+            "response": debug_run_query(_DEBUG_TIMESHEETS_FILTERED, {"from": from_iso}),
+        },
         "expenses_query": debug_run_query(_DEBUG_EXPENSES_RAW),
         "introspect": debug_run_query(_INTROSPECT_QUERY),
     }
