@@ -110,6 +110,17 @@ def compute_vendor_balances(today=None, sheet_overrides=None):
     if auto_vendors:
         fetch_from = earliest_anchor or today.replace(day=1)
         expenses = fetch_expenses_since(fetch_from)
+        logger.info(
+            f"Vendor balances: fetched {len(expenses or [])} expenses since "
+            f"{fetch_from.isoformat()} for {len(auto_vendors)} auto vendor(s)"
+        )
+        # Log the first few so we can see what's in the bucket
+        for e in (expenses or [])[:5]:
+            logger.info(
+                f"  expense sample: date={e.get('date')!r} "
+                f"title={e.get('title')!r} desc={e.get('description')!r} "
+                f"total={e.get('total')}"
+            )
 
     results = []
     grand_total = 0.0
@@ -137,6 +148,11 @@ def compute_vendor_balances(today=None, sheet_overrides=None):
                 e for e in matched
                 if e.get("date") and e["date"] >= anchor_iso
             ]
+            logger.info(
+                f"Vendor {v['name']!r}: patterns={v.get('parse_patterns')} "
+                f"anchor={anchor_iso} -> {len(matched)} matched substring, "
+                f"{len(matched_from)} survived date filter"
+            )
             accumulated = round(sum(e["total"] for e in matched_from), 2)
             entry["mode"] = "auto"
             entry["accumulated"] = accumulated
