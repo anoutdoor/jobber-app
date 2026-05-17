@@ -102,17 +102,17 @@ query GetClosedJobs($cursor: String) {
 # Jobber token management
 # ---------------------------------------------------------------------------
 
-def load_tokens():
-    # Priority order:
-    #   1. Local file — within a deploy this is always the freshest (each refresh
-    #      writes here synchronously). Sheets writes can fail transiently and
-    #      leave Sheets behind; preferring file avoids that drift.
-    #   2. Sheets-backed persistent store — bootstrap after Railway redeploy.
-    #   3. Env var seed — last-ditch fallback for first-time setup.
+# In-memory token cache. Without this, every graphql_request triggers a fresh
+# Sheets read for tokens, which burns through Google Sheets' 60-reads-per-minute
+# per-user quota in ~11 pages of pagination and blows up the whole digest.
+_token_cache = None
+
+
+def _load_tokens_uncached():
+    """Cold load: file > Sheets > env."""
     if os.path.exists(TOKEN_STORE_FILE):
         with open(TOKEN_STORE_FILE) as f:
             return json.load(f)
-
     try:
         from financial.token_persistence import read_tokens as _read_sheets
         sheets_tokens = _read_sheets("jobber")
@@ -133,12 +133,23 @@ def load_tokens():
     return {}
 
 
+def load_tokens():
+    global _token_cache
+    if _token_cache is not None:
+        return _token_cache
+    _token_cache = _load_tokens_uncached()
+    return _token_cache
+
+
 def save_tokens(access_token, refresh_token):
+    global _token_cache
     payload = {"access_token": access_token, "refresh_token": refresh_token}
-    # Always write to local file (fast cache for repeated reads within a deploy).
+    # Update cache FIRST so any concurrent reader sees the fresh tokens.
+    _token_cache = payload
+    # Write to local file (synchronous, fast).
     with open(TOKEN_STORE_FILE, "w") as f:
         json.dump(payload, f)
-    # Persist to Sheets so the value survives the next redeploy.
+    # Persist to Sheets so it survives the next Railway redeploy.
     try:
         from financial.token_persistence import write_tokens as _write_sheets
         _write_sheets("jobber", payload)
@@ -224,12 +235,26 @@ def graphql_request(query, variables=None, access_token=None, _retry=True):
         return None
 
     body = resp.json()
-    # Some Jobber errors come back with HTTP 200 but populate 'errors' AND a null
-    # data field. Log a warning so we don't silently return broken data to callers.
-    if body.get("errors") and not body.get("data"):
+    # Jobber returns HTTP 200 with errors-only body for several conditions.
+    # Detect throttling specifically and retry once after a brief sleep — most
+    # bursts clear within a couple seconds (restore rate 500 cost/sec).
+    errors = body.get("errors") or []
+    if errors and not body.get("data"):
+        is_throttled = any(
+            (e.get("extensions") or {}).get("code") == "THROTTLED"
+            for e in errors
+        )
+        if is_throttled and _retry:
+            logger.warning(
+                f"graphql_request: Jobber THROTTLED. "
+                f"Sleeping 3s then retrying once. Variables: {json.dumps(variables or {})[:200]}"
+            )
+            import time as _time
+            _time.sleep(3)
+            return graphql_request(query, variables, access_token, _retry=False)
         logger.error(
             f"graphql_request: 200 but errors-only body. "
-            f"Errors: {json.dumps(body.get('errors'))[:500]}"
+            f"Errors: {json.dumps(errors)[:500]}"
         )
     return body
 

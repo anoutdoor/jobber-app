@@ -40,16 +40,14 @@ def _api_base():
 # Token store
 # ---------------------------------------------------------------------------
 
-def load_tokens():
-    # Priority order:
-    #   1. Local file — freshest within a deploy (synchronously written on each
-    #      refresh). Sheets writes can transiently fail and drift behind file.
-    #   2. Sheets-backed persistent store — bootstrap after Railway redeploy.
-    #   3. Env var seed — last-ditch fallback for first-time setup.
+# In-memory cache — see jobber_sync._token_cache for rationale.
+_token_cache = None
+
+
+def _load_tokens_uncached():
     if os.path.exists(TOKEN_STORE_FILE):
         with open(TOKEN_STORE_FILE) as f:
             return json.load(f)
-
     try:
         from financial.token_persistence import read_tokens as _read_sheets
         sheets_tokens = _read_sheets("qbo")
@@ -57,7 +55,6 @@ def load_tokens():
             return sheets_tokens
     except Exception as e:
         logger.warning(f"QBO: Sheets token read failed ({e}); falling back to env.")
-
     env_blob = os.getenv("QBO_TOKEN_STORE")
     if env_blob:
         try:
@@ -70,12 +67,22 @@ def load_tokens():
     return {}
 
 
+def load_tokens():
+    global _token_cache
+    if _token_cache is not None:
+        return _token_cache
+    _token_cache = _load_tokens_uncached()
+    return _token_cache
+
+
 def save_tokens(access_token, refresh_token, realm_id):
+    global _token_cache
     payload = {
         "access_token": access_token,
         "refresh_token": refresh_token,
         "realm_id": realm_id,
     }
+    _token_cache = payload  # update cache first so concurrent readers see fresh
     with open(TOKEN_STORE_FILE, "w") as f:
         json.dump(payload, f)
     try:
