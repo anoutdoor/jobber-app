@@ -103,7 +103,13 @@ def fetch_open_invoices():
                 continue
             amounts = node.get("amounts") or {}
             total = float(amounts.get("total") or 0)
-            paid = float(amounts.get("paymentsTotal") or 0)
+            payments = float(amounts.get("paymentsTotal") or 0)
+            # Jobber tracks the deposit collected separately from regular payments,
+            # so paymentsTotal does NOT include it. Without subtracting depositAmount
+            # too, AR is overstated by the deposit amount for any invoice where a
+            # deposit was collected.
+            deposit = float(amounts.get("depositAmount") or 0)
+            paid = payments + deposit
             outstanding = round(total - paid, 2)
             if outstanding <= 0:
                 continue
@@ -134,6 +140,8 @@ def fetch_open_invoices():
                 "due_date": due_date_str[:10] if due_date_str else "",
                 "status": node.get("invoiceStatus"),
                 "total": round(total, 2),
+                "payments": round(payments, 2),
+                "deposit": round(deposit, 2),
                 "paid": round(paid, 2),
                 "outstanding": outstanding,
                 "days_past_due": days_past_due,
@@ -465,6 +473,12 @@ query Introspect {
     fields { name type { name kind ofType { name kind } } }
   }
   User: __type(name: "User") {
+    fields { name type { name kind ofType { name kind } } }
+  }
+  Invoice: __type(name: "Invoice") {
+    fields { name type { name kind ofType { name kind } } }
+  }
+  InvoiceAmounts: __type(name: "InvoiceAmounts") {
     fields { name type { name kind ofType { name kind } } }
   }
   Query: __type(name: "Query") {
