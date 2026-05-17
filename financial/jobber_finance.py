@@ -256,6 +256,7 @@ query TimeEntries($cursor: String, $from: ISO8601DateTime!) {
       endAt
       finalDuration
       labourRate
+      ticking
       user {
         id
         name { full }
@@ -268,6 +269,11 @@ query TimeEntries($cursor: String, $from: ISO8601DateTime!) {
   }
 }
 """
+
+# Sanity cap for currently-ticking entries: assume no shift is longer than this
+# many hours. Protects against entries where a crew forgot to clock out yesterday
+# (startAt is 24+ hours ago, would otherwise count as huge accrued hours).
+_MAX_TICKING_HOURS = 14
 
 USERS_QUERY = """
 query AllUsers($cursor: String) {
@@ -358,17 +364,39 @@ def fetch_time_entries_since(start_dt):
             break
 
         got_first_response = True
+        now_utc = datetime.utcnow()
 
         for node in t_data.get("nodes", []):
             user = node.get("user") or {}
+            ticking = bool(node.get("ticking"))
+            final_duration = float(node.get("finalDuration") or 0)
+            start_at_str = node.get("startAt") or ""
+
+            # For currently-ticking entries, finalDuration is 0/null until clock-out.
+            # Compute live duration from startAt to now (capped at _MAX_TICKING_HOURS
+            # to protect against forgotten clock-outs from prior days).
+            if ticking and start_at_str:
+                try:
+                    start_dt_utc = datetime.strptime(
+                        start_at_str.replace("Z", "+0000"),
+                        "%Y-%m-%dT%H:%M:%S%z",
+                    ).replace(tzinfo=None)
+                    live_seconds = max(0.0, (now_utc - start_dt_utc).total_seconds())
+                    duration_seconds = min(live_seconds, _MAX_TICKING_HOURS * 3600)
+                except (ValueError, TypeError):
+                    duration_seconds = final_duration
+            else:
+                duration_seconds = final_duration
+
             entries.append({
                 "id": node.get("id"),
                 "user_id": user.get("id"),
                 "user_name": ((user.get("name") or {}).get("full") or ""),
-                "start_at": node.get("startAt"),
+                "start_at": start_at_str,
                 "end_at": node.get("endAt"),
-                "duration_seconds": float(node.get("finalDuration") or 0),
+                "duration_seconds": duration_seconds,
                 "labour_rate": float(node.get("labourRate") or 0),
+                "ticking": ticking,
             })
 
         page_info = t_data.get("pageInfo", {})
@@ -376,7 +404,11 @@ def fetch_time_entries_since(start_dt):
             break
         cursor = page_info.get("endCursor")
 
-    logger.info(f"Time entries: fetched {len(entries)} since {from_iso}")
+    ticking_count = sum(1 for e in entries if e.get("ticking"))
+    logger.info(
+        f"Time entries: fetched {len(entries)} since {from_iso} "
+        f"({ticking_count} currently ticking)"
+    )
     return entries
 
 
