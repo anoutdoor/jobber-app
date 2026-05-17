@@ -32,33 +32,33 @@ qbo:
     balance_overrides:
       # Bank accounts
       "94":             # 0607 Axos Savings
-        balance: 3070.42
-        as_of: "2026-05-15"
+        balance: 8070.42
+        as_of: "2026-05-17"
       "38":             # Chase Checking (6906) — main operating
-        balance: 57704.17
-        as_of: "2026-05-15"
+        balance: 63229.67
+        as_of: "2026-05-17"
       # Credit cards
       "92":             # 0749 Niko Chase Business Unlimited
         balance: 214.97
-        as_of: "2026-05-15"
+        as_of: "2026-05-17"
       "1150040017":     # 1757 (4091 parent subaccount)
         balance: 0.00
-        as_of: "2026-05-15"
+        as_of: "2026-05-17"
       "88":             # 4971 A. ROGEL - 2
         balance: 0.00
-        as_of: "2026-05-15"
+        as_of: "2026-05-17"
       "89":             # 6540 Niko Chase Business Cash Card
-        balance: 49.78
-        as_of: "2026-05-15"
+        balance: 161.33
+        as_of: "2026-05-17"
       "68":             # 4091 Alex Chase Business Cash Credit card
         balance: 71.19
-        as_of: "2026-05-15"
+        as_of: "2026-05-17"
       "1150040024":     # Capital One Spark 2% Alex
-        balance: 7949.54
-        as_of: "2026-05-15"
+        balance: 8601.47
+        as_of: "2026-05-17"
       "48":             # Capital One Credit card
-        balance: 12900.61
-        as_of: "2026-05-15"
+        balance: 15637.12
+        as_of: "2026-05-17"
   manual:
     as_of: null         # set to today's ISO date when you update the numbers
     cash_accounts:      # bank accounts: positive numbers = cash you have
