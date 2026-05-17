@@ -104,20 +104,22 @@ query GetClosedJobs($cursor: String) {
 
 def load_tokens():
     # Priority order:
-    #   1. Sheets-backed persistent store (survives Railway redeploys)
-    #   2. Local file (fast path; valid within one deploy)
-    #   3. Env var seed (last-ditch fallback)
+    #   1. Local file — within a deploy this is always the freshest (each refresh
+    #      writes here synchronously). Sheets writes can fail transiently and
+    #      leave Sheets behind; preferring file avoids that drift.
+    #   2. Sheets-backed persistent store — bootstrap after Railway redeploy.
+    #   3. Env var seed — last-ditch fallback for first-time setup.
+    if os.path.exists(TOKEN_STORE_FILE):
+        with open(TOKEN_STORE_FILE) as f:
+            return json.load(f)
+
     try:
         from financial.token_persistence import read_tokens as _read_sheets
         sheets_tokens = _read_sheets("jobber")
         if sheets_tokens.get("access_token"):
             return sheets_tokens
     except Exception as e:
-        logger.warning(f"Jobber: Sheets token read failed ({e}); falling back.")
-
-    if os.path.exists(TOKEN_STORE_FILE):
-        with open(TOKEN_STORE_FILE) as f:
-            return json.load(f)
+        logger.warning(f"Jobber: Sheets token read failed ({e}); falling back to env.")
 
     env_blob = os.getenv("JOBBER_TOKEN_STORE")
     if env_blob:

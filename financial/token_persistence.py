@@ -90,24 +90,12 @@ def read_tokens(provider):
 
 
 def write_tokens(provider, tokens):
-    """Write tokens for the provider. Creates the row if missing, updates if present."""
-    try:
-        ws = _ws()
-    except Exception as e:
-        logger.error(f"Token store: can't open sheet to write ({e})")
-        return False
-
-    try:
-        rows = ws.get_all_records()
-    except Exception as e:
-        logger.error(f"Token store: can't read sheet rows before write ({e})")
-        return False
-
-    target_row_index = None
-    for i, row in enumerate(rows, start=2):  # +1 for header, +1 for 1-indexed
-        if str(row.get("provider", "")).lower() == provider.lower():
-            target_row_index = i
-            break
+    """Write tokens for the provider with retries. Creates the row if missing,
+    updates if present. Returns True on success. Loud failure logging so we
+    notice when Sheets drifts behind the file's freshest tokens — that's the
+    root cause of the rotating-refresh-token failures.
+    """
+    import time as _time
 
     payload = [
         provider,
@@ -117,13 +105,32 @@ def write_tokens(provider, tokens):
         datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
     ]
 
-    try:
-        if target_row_index:
-            ws.update(f"A{target_row_index}:E{target_row_index}", [payload])
-        else:
-            ws.append_row(payload)
-        logger.info(f"Token store: wrote {provider} tokens to Sheets row.")
-        return True
-    except Exception as e:
-        logger.error(f"Token store: write failed ({e})")
-        return False
+    last_err = None
+    for attempt in (1, 2, 3):
+        try:
+            ws = _ws()
+            rows = ws.get_all_records()
+            target_row_index = None
+            for i, row in enumerate(rows, start=2):  # +1 header, +1 1-indexed
+                if str(row.get("provider", "")).lower() == provider.lower():
+                    target_row_index = i
+                    break
+
+            if target_row_index:
+                ws.update(f"A{target_row_index}:E{target_row_index}", [payload])
+            else:
+                ws.append_row(payload)
+            logger.info(f"Token store: wrote {provider} tokens to Sheets row (attempt {attempt}).")
+            return True
+        except Exception as e:
+            last_err = e
+            logger.warning(f"Token store ({provider}): write attempt {attempt} failed ({e}).")
+            if attempt < 3:
+                _time.sleep(2 ** attempt)  # 2s, 4s
+
+    logger.error(
+        f"Token store ({provider}): write FAILED after 3 attempts ({last_err}). "
+        f"Sheets is now BEHIND the local file — next Railway deploy will "
+        f"likely fall back to stale tokens. Re-auth via /login or /qbo/login."
+    )
+    return False
