@@ -35,7 +35,7 @@ qbo:
         balance: 8070.42
         as_of: "2026-05-17"
       "38":             # Chase Checking (6906) — main operating
-        balance: 63229.67
+        balance: 58229.67
         as_of: "2026-05-17"
       # Credit cards
       "92":             # 0749 Niko Chase Business Unlimited
