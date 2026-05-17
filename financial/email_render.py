@@ -232,11 +232,27 @@ def render_email(snapshot, today=None):
         f"Set them in financial_config.yaml under payroll.rate_overrides.</div>"
         if missing else ""
     )
+    # Gross + tax-burden breakdown beneath the per-user table
+    tax_pct = payroll.get("tax_burden_pct") or 0
+    if tax_pct:
+        totals_block = (
+            "<div style='font-family:Helvetica,Arial,sans-serif;font-size:13px;"
+            "color:#444;margin-top:10px;text-align:right;line-height:1.6'>"
+            f"Gross wages: <b>{_money(payroll.get('gross_pay', 0))}</b><br>"
+            f"+ employer tax burden ({tax_pct:g}%): <b>{_money(payroll.get('tax_burden', 0))}</b><br>"
+            f"<span style='font-size:14px'>Total payroll cost: "
+            f"<b>{_money(payroll.get('total_accrual', 0))}</b></span>"
+            "</div>"
+        )
+    else:
+        totals_block = ""
+
     payroll_html = (
         _section_header(f"Payroll accrued — {_money(payroll.get('total_accrual', 0))} (week starting {escape(payroll.get('week_start', ''))})")
         + "<table style='width:100%;font-family:Helvetica,Arial,sans-serif;font-size:13px;border-collapse:collapse'>"
         + payroll_rows
         + "</table>"
+        + totals_block
         + missing_note
     )
 

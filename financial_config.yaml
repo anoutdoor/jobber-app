@@ -123,9 +123,16 @@ overhead:
 
 # Payroll accrual
 # Work week: Monday through Sunday. Paid out the following Thursday.
-# Wages are pulled from Jobber User.hourlyRate. Use overrides if Jobber rate is missing or wrong.
+# labourRate per entry comes from Jobber. Use rate_overrides if a user's rate
+# is missing or wrong on the Jobber side.
+#
+# tax_burden_pct: percentage added on top of gross wages to capture
+# employer-side taxes (FICA 7.65%, federal/state UI, workers' comp, etc.).
+# 10% is a reasonable starting estimate; bump up if A&N's actual burden
+# is higher.
 payroll:
   rate_overrides: {}      # e.g. "Erick Gonzalez": 22.00
+  tax_burden_pct: 10
 
 # AR aging buckets. "Current" = not yet past due (days past due <= 0).
 ar:

@@ -223,22 +223,31 @@ def compute_payroll_accrual(today=None, entries=None):
         bucket["estimated_pay"] += hours * rate
 
     # Compute effective rate per user (weighted avg)
-    total_accrual = 0.0
+    total_gross = 0.0
     total_hours = 0.0
     for u in by_user.values():
         u["hours"] = round(u["hours"], 2)
         u["estimated_pay"] = round(u["estimated_pay"], 2)
         u["rate"] = round(u["estimated_pay"] / u["hours"], 2) if u["hours"] else 0.0
-        total_accrual += u["estimated_pay"]
+        total_gross += u["estimated_pay"]
         total_hours += u["hours"]
 
     breakdown = sorted(by_user.values(), key=lambda u: u["estimated_pay"], reverse=True)
+
+    # Tax burden (employer-side FICA, Medicare, UI, workers' comp, etc.).
+    # Configurable in financial_config.yaml under payroll.tax_burden_pct.
+    tax_burden_pct = float(payroll_settings().get("tax_burden_pct") or 0)
+    tax_burden = round(total_gross * tax_burden_pct / 100.0, 2)
+    total_accrual = round(total_gross + tax_burden, 2)
 
     return {
         "week_start": week_start.isoformat(),
         "as_of": today.isoformat(),
         "total_hours": round(total_hours, 2),
-        "total_accrual": round(total_accrual, 2),
+        "gross_pay": round(total_gross, 2),
+        "tax_burden_pct": tax_burden_pct,
+        "tax_burden": tax_burden,
+        "total_accrual": total_accrual,
         "breakdown": breakdown,
         "missing_rates": [u["name"] for u in breakdown if u["rate"] == 0.0],
     }
