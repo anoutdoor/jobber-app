@@ -61,6 +61,10 @@ _AR_EXCLUDE_STATUSES = {"paid", "draft", "bad_debt", "archived"}
 def fetch_open_invoices():
     """Return a list of open invoice dicts with computed outstanding balance.
 
+    Returns None if the underlying GraphQL call fails before returning any
+    data (auth failure, schema error, network error). The caller can use
+    None to detect "data source unavailable" vs an empty result set.
+
     Each invoice dict has keys:
         id, number, subject, client_name, client_id, client_email, client_phone,
         issued_date, due_date, status, total, paid, outstanding, days_past_due
@@ -68,21 +72,30 @@ def fetch_open_invoices():
     today = date.today()
     invoices = []
     cursor = None
+    got_first_response = False
 
     while True:
         data = graphql_request(INVOICES_QUERY, {"cursor": cursor})
         if not data:
             logger.error("AR: graphql_request returned None")
+            if not got_first_response:
+                return None
             break
 
         if data.get("errors"):
             logger.error(f"AR query errors: {json.dumps(data['errors'])[:500]}")
+            if not got_first_response:
+                return None
             break
 
         inv_data = (data.get("data") or {}).get("invoices")
         if not inv_data:
             logger.error(f"AR: unexpected response shape: {json.dumps(data)[:500]}")
+            if not got_first_response:
+                return None
             break
+
+        got_first_response = True
 
         for node in inv_data.get("nodes", []):
             status = (node.get("invoiceStatus") or "").lower()
@@ -316,25 +329,35 @@ def fetch_users():
 def fetch_time_entries_since(start_dt):
     """Return time entries with startAt on or after start_dt (datetime).
 
+    Returns None on auth failure / API error (vs [] for no rows in window).
     Uses Jobber's server-side TimeSheetEntriesFilterAttributes.startAt
     range filter. Each entry carries its own labourRate.
     """
     entries = []
     cursor = None
+    got_first_response = False
     # Filter expects ISO8601DateTime
     from_iso = start_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
     while True:
         data = graphql_request(TIME_ENTRIES_QUERY, {"cursor": cursor, "from": from_iso})
         if not data:
+            if not got_first_response:
+                return None
             break
         if data.get("errors"):
             logger.error(f"Time entries errors: {json.dumps(data['errors'])[:500]}")
+            if not got_first_response:
+                return None
             break
 
         t_data = (data.get("data") or {}).get("timeSheetEntries")
         if not t_data:
+            if not got_first_response:
+                return None
             break
+
+        got_first_response = True
 
         for node in t_data.get("nodes", []):
             user = node.get("user") or {}

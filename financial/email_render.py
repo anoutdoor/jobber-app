@@ -51,8 +51,10 @@ def render_email(snapshot, today=None):
     payroll = snapshot["payroll"]
     bills = snapshot["upcoming_bills"]
     flags = snapshot.get("flags") or []
+    unavailable = snapshot.get("unavailable_sources") or []
 
-    subject = f"A&N Cashflow — {today.isoformat()} — Net {_money(pos['total_position'])}"
+    subject_unavail = " [DEGRADED]" if unavailable else ""
+    subject = f"A&N Cashflow — {today.isoformat()} — Net {_money(pos['total_position'])}{subject_unavail}"
 
     # --- Headline ---
     headline = f"""
@@ -66,6 +68,22 @@ def render_email(snapshot, today=None):
       </div>
     </div>
     """
+
+    # --- Unavailable data warning (loud, top of email) ---
+    unavail_html = ""
+    if unavailable:
+        items = "".join(f"<li>{escape(s)}</li>" for s in unavailable)
+        unavail_html = f"""
+        <div style='background:#ffe0e0;border:2px solid #a02020;padding:14px 18px;margin-bottom:16px;font-family:Helvetica,Arial,sans-serif;border-radius:6px'>
+          <div style='font-size:16px;font-weight:700;color:#a02020;text-transform:uppercase;letter-spacing:1px'>⚠ Data source(s) unavailable</div>
+          <ul style='margin:8px 0 4px 18px;padding:0;color:#222'>{items}</ul>
+          <div style='font-size:12px;color:#555;margin-top:6px'>
+            The numbers below for the affected source(s) are zeros, not real values.
+            Likely cause: OAuth tokens expired/revoked. Visit the relevant /login route on the app
+            to re-authorize.
+          </div>
+        </div>
+        """
 
     # --- Flags ---
     flags_html = ""
@@ -243,6 +261,7 @@ def render_email(snapshot, today=None):
     <!doctype html>
     <html><body style='background:#fff;max-width:680px;margin:0 auto;padding:20px;font-family:Helvetica,Arial,sans-serif;color:#222'>
       <div style='color:#888;font-size:12px;letter-spacing:1px;text-transform:uppercase'>A&amp;N Outdoor Services &middot; Daily Cashflow &middot; {today.isoformat()}</div>
+      {unavail_html}
       {headline}
       {flags_html}
       {breakdown_html}

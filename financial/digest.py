@@ -5,11 +5,11 @@ Flow: pull QBO + Jobber + sheet → compute → render → send → save snapsho
 import os
 import json
 import logging
-from datetime import date
+from datetime import date, datetime
 
-from financial.config import email_settings, anomaly_settings, qbo_settings
+from financial.config import email_settings, anomaly_settings, qbo_settings, vendors as vendors_cfg
 from financial.qbo import fetch_account_balances, summarize_balances, fetch_most_recent_txn_date
-from financial.jobber_finance import fetch_open_invoices
+from financial.jobber_finance import fetch_open_invoices, fetch_time_entries_since, current_pay_week_start
 from financial.overhead_sheet import fetch_upcoming_bills
 from financial.compute import (
     compute_ar,
@@ -19,6 +19,7 @@ from financial.compute import (
 )
 from financial.email_render import render_email
 from financial.gmail_send import send_email
+from financial import sheets_overrides
 
 logger = logging.getLogger(__name__)
 
@@ -145,6 +146,9 @@ def build_snapshot(today=None):
     today = today or date.today()
     logger.info(f"=== Cashflow snapshot starting for {today.isoformat()} ===")
 
+    # Track sources that failed so the email can shout about it
+    unavailable = []
+
     qbo_cfg = qbo_settings()
     if qbo_cfg.get("mode") == "manual":
         qbo_summary = _manual_qbo_summary(qbo_cfg)
@@ -152,26 +156,76 @@ def build_snapshot(today=None):
     else:
         api_cfg = qbo_cfg.get("api") or {}
         excluded = api_cfg.get("excluded_account_ids") or []
-        overrides = api_cfg.get("balance_overrides") or {}
+        config_overrides = api_cfg.get("balance_overrides") or {}
         accounts = fetch_account_balances()
-        qbo_summary = summarize_balances(
-            accounts, excluded_ids=excluded, overrides=overrides
-        )
-        qbo_summary["mode"] = "api"
-        qbo_summary["books_through"] = fetch_most_recent_txn_date()
-        logger.info(
-            f"QBO: api mode, excluded {len(excluded)} account(s), "
-            f"overrode {len(overrides)} account(s), "
-            f"books_through={qbo_summary.get('books_through')}"
-        )
+        if accounts is None:
+            unavailable.append("QuickBooks")
+            qbo_summary = {
+                "cash_total": 0.0, "cc_total": 0.0,
+                "cash_accounts": [], "cc_accounts": [],
+                "mode": "api", "books_through": None, "unavailable": True,
+            }
+            logger.error("QBO: account balance fetch failed (None). Marked unavailable.")
+        else:
+            # Read sheet overrides; seed the tab with all current accounts on first run
+            try:
+                seed = [{"id": a["id"], "name": a["name"]} for a in accounts]
+                sheet_overrides = sheets_overrides.read_balance_overrides(seed_accounts=seed)
+            except Exception as e:
+                logger.warning(f"Balance override sheet read failed: {e}")
+                sheet_overrides = {}
+            # Sheet wins over config
+            merged_overrides = {**config_overrides, **sheet_overrides}
+            qbo_summary = summarize_balances(
+                accounts, excluded_ids=excluded, overrides=merged_overrides
+            )
+            qbo_summary["mode"] = "api"
+            qbo_summary["books_through"] = fetch_most_recent_txn_date()
+            qbo_summary["sheet_overrides_active"] = len(sheet_overrides)
+            logger.info(
+                f"QBO: api mode, excluded {len(excluded)}, "
+                f"config overrides {len(config_overrides)}, "
+                f"sheet overrides {len(sheet_overrides)}, "
+                f"books_through={qbo_summary.get('books_through')}"
+            )
 
     invoices = fetch_open_invoices()
+    if invoices is None:
+        unavailable.append("Jobber AR")
+        invoices = []
+        logger.error("Jobber AR fetch failed (None). Marked unavailable.")
     ar = compute_ar(invoices)
 
-    vendors = compute_vendor_balances(today)
-    payroll = compute_payroll_accrual(today)
-    upcoming_bills = fetch_upcoming_bills(today)
+    # Vendor balances — read sheet overrides, seed with current config vendors
+    try:
+        vendor_sheet = sheets_overrides.read_vendor_overrides(
+            seed_vendors=[{"name": v["name"]} for v in vendors_cfg()]
+        )
+    except Exception as e:
+        logger.warning(f"Vendor override sheet read failed: {e}")
+        vendor_sheet = {}
+    vendors = compute_vendor_balances(today, sheet_overrides=vendor_sheet)
 
+    # Payroll — fetch entries once, detect failure, then compute
+    week_start = current_pay_week_start(today)
+    entries_start_dt = datetime.combine(week_start, datetime.min.time())
+    time_entries = fetch_time_entries_since(entries_start_dt)
+    if time_entries is None:
+        unavailable.append("Jobber Time Entries")
+        logger.error("Jobber time entries fetch failed. Payroll marked unavailable.")
+        payroll = {
+            "week_start": week_start.isoformat(),
+            "as_of": today.isoformat(),
+            "total_hours": 0.0,
+            "total_accrual": 0.0,
+            "breakdown": [],
+            "missing_rates": [],
+            "unavailable": True,
+        }
+    else:
+        payroll = compute_payroll_accrual(today, entries=time_entries)
+
+    upcoming_bills = fetch_upcoming_bills(today)
     position = compute_position(qbo_summary, ar, vendors, payroll, upcoming_bills)
 
     snapshot = {
@@ -182,6 +236,7 @@ def build_snapshot(today=None):
         "vendors": vendors,
         "payroll": payroll,
         "upcoming_bills": upcoming_bills,
+        "unavailable_sources": unavailable,
     }
 
     previous = _load_last_snapshot()

@@ -61,15 +61,20 @@ def compute_ar(invoices=None):
 # Vendor balances
 # ---------------------------------------------------------------------------
 
-def compute_vendor_balances(today=None):
+def compute_vendor_balances(today=None, sheet_overrides=None):
+    """Compute vendor balances. sheet_overrides (from sheets_overrides.read_vendor_overrides)
+    takes precedence over the YAML config when present.
+    """
     today = today or date.today()
     cfg = vendors_cfg()
+    sheet_overrides = sheet_overrides or {}
+    # Build case-insensitive lookup for sheet overrides
+    sheet_lookup = {k.strip().lower(): v for k, v in sheet_overrides.items()}
 
     # Only fetch expenses if any vendor is in auto mode
     expenses = None
     auto_needed = any(v.get("auto") for v in cfg)
     if auto_needed:
-        # MTD window
         mtd_start = today.replace(day=1)
         expenses = fetch_expenses_since(mtd_start)
 
@@ -84,7 +89,15 @@ def compute_vendor_balances(today=None):
             "source_note": "",
             "expense_count": 0,
         }
-        if v.get("auto"):
+
+        # Sheet override wins over both auto and manual
+        override = sheet_lookup.get(v["name"].strip().lower())
+        if override:
+            entry["balance"] = round(override["balance"], 2)
+            entry["as_of"] = override.get("as_of") or None
+            entry["mode"] = "sheet"
+            entry["source_note"] = "from 'Vendor Balances' sheet"
+        elif v.get("auto"):
             matches = expenses_for_vendor(expenses or [], v.get("parse_patterns", []))
             entry["balance"] = round(sum(e["total"] for e in matches), 2)
             entry["expense_count"] = len(matches)
@@ -111,7 +124,7 @@ def compute_vendor_balances(today=None):
 # Payroll accrual
 # ---------------------------------------------------------------------------
 
-def compute_payroll_accrual(today=None):
+def compute_payroll_accrual(today=None, entries=None):
     """Hours worked since Monday 00:00 of current pay week × labourRate.
 
     Each time entry carries its own labourRate (from Jobber), so the accrual
@@ -121,13 +134,17 @@ def compute_payroll_accrual(today=None):
 
     rate_overrides in financial_config.yaml force a specific rate for a
     given user name when Jobber's labourRate is missing or wrong.
+
+    entries: optional pre-fetched list (lets the caller decide failure
+    handling and avoids a redundant API call).
     """
     today = today or date.today()
     week_start = current_pay_week_start(today)
     start_dt = datetime.combine(week_start, datetime.min.time())
 
     rate_overrides = payroll_settings().get("rate_overrides") or {}
-    entries = fetch_time_entries_since(start_dt)
+    if entries is None:
+        entries = fetch_time_entries_since(start_dt) or []
 
     by_user = {}
     for e in entries:

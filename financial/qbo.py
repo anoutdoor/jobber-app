@@ -220,7 +220,7 @@ def fetch_account_balances():
     path = f"/query?query={requests.utils.quote(query)}&minorversion=70"
     data = _api_get(path)
     if not data:
-        return []
+        return None  # signal auth/API failure (distinct from empty result)
 
     accounts = ((data.get("QueryResponse") or {}).get("Account") or [])
     out = []
