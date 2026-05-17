@@ -23,8 +23,8 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 INVOICES_QUERY = """
-query OpenInvoices($cursor: String) {
-  invoices(first: 50, after: $cursor) {
+query OpenInvoices($cursor: String, $status: InvoiceStatusTypeEnum) {
+  invoices(filter: { status: $status }, first: 50, after: $cursor) {
     nodes {
       id
       invoiceNumber
@@ -54,43 +54,47 @@ query OpenInvoices($cursor: String) {
 }
 """
 
-# Statuses that should be excluded from outstanding AR
+# Jobber statuses that represent money still owed. Filtering server-side
+# means we only paginate through these — not the years of paid invoices.
+_OPEN_STATUSES = ["awaiting_payment", "past_due", "partial"]
+
+# Belt-and-suspenders Python-side filter in case Jobber returns something
+# unexpected (e.g. a 'partial' invoice that's now fully paid but not yet
+# re-stamped).
 _AR_EXCLUDE_STATUSES = {"paid", "draft", "bad_debt", "archived"}
 
 
-def fetch_open_invoices():
-    """Return a list of open invoice dicts with computed outstanding balance.
-
-    Returns None if the underlying GraphQL call fails before returning any
-    data (auth failure, schema error, network error). The caller can use
-    None to detect "data source unavailable" vs an empty result set.
-
-    Each invoice dict has keys:
-        id, number, subject, client_name, client_id, client_email, client_phone,
-        issued_date, due_date, status, total, paid, outstanding, days_past_due
-    """
+def _fetch_invoices_for_status(status):
+    """Paginate through invoices for a single status. Returns list (may be
+    empty). Returns None if the first call fails before any data (auth /
+    network / schema error specific to this status enum value)."""
     today = date.today()
     invoices = []
     cursor = None
     got_first_response = False
+    page_num = 0
 
     while True:
-        data = graphql_request(INVOICES_QUERY, {"cursor": cursor})
+        page_num += 1
+        data = graphql_request(INVOICES_QUERY, {"cursor": cursor, "status": status})
         if not data:
-            logger.error("AR: graphql_request returned None")
+            logger.error(f"AR status={status} page={page_num}: graphql_request returned None")
             if not got_first_response:
                 return None
             break
 
         if data.get("errors"):
-            logger.error(f"AR query errors: {json.dumps(data['errors'])[:500]}")
+            logger.error(
+                f"AR status={status} page={page_num} errors: "
+                f"{json.dumps(data['errors'])[:300]}"
+            )
             if not got_first_response:
                 return None
             break
 
         inv_data = (data.get("data") or {}).get("invoices")
         if not inv_data:
-            logger.error(f"AR: unexpected response shape: {json.dumps(data)[:500]}")
+            logger.error(f"AR status={status}: unexpected shape: {json.dumps(data)[:300]}")
             if not got_first_response:
                 return None
             break
@@ -98,16 +102,13 @@ def fetch_open_invoices():
         got_first_response = True
 
         for node in inv_data.get("nodes", []):
-            status = (node.get("invoiceStatus") or "").lower()
-            if status in _AR_EXCLUDE_STATUSES:
+            status_val = (node.get("invoiceStatus") or "").lower()
+            # Defensive: skip anything Jobber returns that shouldn't count.
+            if status_val in _AR_EXCLUDE_STATUSES:
                 continue
             amounts = node.get("amounts") or {}
             total = float(amounts.get("total") or 0)
             payments = float(amounts.get("paymentsTotal") or 0)
-            # Jobber tracks the deposit collected separately from regular payments,
-            # so paymentsTotal does NOT include it. Without subtracting depositAmount
-            # too, AR is overstated by the deposit amount for any invoice where a
-            # deposit was collected.
             deposit = float(amounts.get("depositAmount") or 0)
             paid = payments + deposit
             outstanding = round(total - paid, 2)
@@ -152,8 +153,46 @@ def fetch_open_invoices():
             break
         cursor = page_info.get("endCursor")
 
-    logger.info(f"AR: fetched {len(invoices)} open invoices")
     return invoices
+
+
+def fetch_open_invoices():
+    """Return a list of open invoice dicts with computed outstanding balance.
+
+    Uses Jobber's server-side status filter (3 focused queries — one per
+    open status) instead of pulling every invoice and filtering in Python.
+    Cuts pagination from ~30+ pages to ~3-5 total and avoids hammering
+    Jobber's rate limiter.
+
+    Returns None if the very first sub-query fails (auth/network). If at
+    least one status query succeeded, returns whatever was collected even
+    if a later status failed (partial data is better than nothing).
+
+    Each invoice dict has keys:
+        id, number, subject, client_name, client_id, client_email, client_phone,
+        issued_date, due_date, status, total, payments, deposit, paid,
+        outstanding, days_past_due
+    """
+    all_invoices = []
+    any_status_succeeded = False
+
+    for status in _OPEN_STATUSES:
+        result = _fetch_invoices_for_status(status)
+        if result is None:
+            if not any_status_succeeded:
+                logger.error(f"AR: first status '{status}' failed entirely; marking unavailable")
+                return None
+            logger.warning(
+                f"AR: status '{status}' failed but earlier statuses succeeded; "
+                f"continuing with partial data ({len(all_invoices)} so far)"
+            )
+            continue
+        any_status_succeeded = True
+        all_invoices.extend(result)
+        logger.info(f"AR: status={status} returned {len(result)} open invoice(s)")
+
+    logger.info(f"AR: fetched {len(all_invoices)} total open invoices across all statuses")
+    return all_invoices
 
 
 # ---------------------------------------------------------------------------
