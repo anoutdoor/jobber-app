@@ -255,7 +255,7 @@ TIME_ENTRIES_QUERY = """
 query TimeEntries($cursor: String, $from: ISO8601DateTime!) {
   timeSheetEntries(
     filter: { startAt: { after: $from } }
-    first: 50
+    first: 25
     after: $cursor
   ) {
     nodes {
@@ -276,6 +276,10 @@ query TimeEntries($cursor: String, $from: ISO8601DateTime!) {
   }
 }
 """
+
+# Hard cap on pagination depth so a misbehaving cursor can't spin forever.
+# At 25 entries/page × 40 pages = 1000 entries, plenty for a week of work.
+_MAX_TIME_ENTRY_PAGES = 40
 
 USERS_QUERY = """
 query AllUsers($cursor: String) {
@@ -339,32 +343,53 @@ def fetch_time_entries_since(start_dt):
 
     Returns None on auth failure / API error (vs [] for no rows in window).
     Uses Jobber's server-side TimeSheetEntriesFilterAttributes.startAt
-    range filter. Each entry carries its own labourRate.
+    range filter. Each entry carries its own labourRate. Capped at
+    _MAX_TIME_ENTRY_PAGES to prevent runaway pagination.
     """
     entries = []
     cursor = None
     got_first_response = False
+    page_num = 0
     # Filter expects ISO8601DateTime
     from_iso = start_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
     while True:
+        page_num += 1
+        if page_num > _MAX_TIME_ENTRY_PAGES:
+            logger.error(
+                f"Time entries: hit {_MAX_TIME_ENTRY_PAGES}-page cap with "
+                f"{len(entries)} entries gathered. Last cursor: {(cursor or '')[:50]}. "
+                f"Data may be incomplete past this point."
+            )
+            break
+
+        logger.info(
+            f"Time entries: requesting page {page_num} "
+            f"(cursor={(cursor or 'null')[:30]}, from={from_iso})"
+        )
         data = graphql_request(TIME_ENTRIES_QUERY, {"cursor": cursor, "from": from_iso})
         if not data:
+            logger.error(
+                f"Time entries: page {page_num} graphql_request returned None. "
+                f"Already collected {len(entries)} entries before this. "
+                f"See preceding graphql_request log line for HTTP error detail."
+            )
             if not got_first_response:
                 return None
             break
         if data.get("errors"):
-            logger.error(f"Time entries errors: {json.dumps(data['errors'])[:500]}")
+            logger.error(
+                f"Time entries page {page_num} errors: "
+                f"{json.dumps(data['errors'])[:500]}"
+            )
             if not got_first_response:
                 return None
             break
 
         t_data = (data.get("data") or {}).get("timeSheetEntries")
         if not t_data:
-            # Log the FULL response so we can see exactly what Jobber sent back
-            # when timeSheetEntries comes back null/missing.
             logger.error(
-                f"Time entries: t_data is missing/null. "
+                f"Time entries: page {page_num} t_data is missing/null. "
                 f"Full response (first 1000 chars): {json.dumps(data)[:1000]}"
             )
             if not got_first_response:
@@ -389,7 +414,7 @@ def fetch_time_entries_since(start_dt):
 
         page_info = t_data.get("pageInfo", {})
         logger.info(
-            f"Time entries page: got {page_node_count} entries "
+            f"Time entries page {page_num}: got {page_node_count} entries "
             f"(running total {len(entries)}), "
             f"hasNextPage={page_info.get('hasNextPage')}, "
             f"endCursor={(page_info.get('endCursor') or '')[:30]}"
@@ -398,7 +423,7 @@ def fetch_time_entries_since(start_dt):
             break
         cursor = page_info.get("endCursor")
 
-    logger.info(f"Time entries: fetched {len(entries)} total since {from_iso}")
+    logger.info(f"Time entries: fetched {len(entries)} total since {from_iso} ({page_num} page(s))")
     return entries
 
 
