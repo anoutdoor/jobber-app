@@ -164,16 +164,17 @@ def fetch_open_invoices():
     Cuts pagination from ~30+ pages to ~3-5 total and avoids hammering
     Jobber's rate limiter.
 
+    Dedupes by invoice id across status buckets because Jobber's status
+    filter is not a strict partition: an invoice that's both
+    awaiting_payment and past_due is returned by both queries. Without
+    dedup, AR is overstated by the duplicates.
+
     Returns None if the very first sub-query fails (auth/network). If at
     least one status query succeeded, returns whatever was collected even
     if a later status failed (partial data is better than nothing).
-
-    Each invoice dict has keys:
-        id, number, subject, client_name, client_id, client_email, client_phone,
-        issued_date, due_date, status, total, payments, deposit, paid,
-        outstanding, days_past_due
     """
     all_invoices = []
+    seen_ids = set()
     any_status_succeeded = False
 
     for status in _OPEN_STATUSES:
@@ -184,14 +185,28 @@ def fetch_open_invoices():
                 return None
             logger.warning(
                 f"AR: status '{status}' failed but earlier statuses succeeded; "
-                f"continuing with partial data ({len(all_invoices)} so far)"
+                f"continuing with partial data ({len(all_invoices)} unique so far)"
             )
             continue
         any_status_succeeded = True
-        all_invoices.extend(result)
-        logger.info(f"AR: status={status} returned {len(result)} open invoice(s)")
 
-    logger.info(f"AR: fetched {len(all_invoices)} total open invoices across all statuses")
+        new_count = 0
+        dup_count = 0
+        for inv in result:
+            inv_id = inv.get("id")
+            if inv_id and inv_id in seen_ids:
+                dup_count += 1
+                continue
+            if inv_id:
+                seen_ids.add(inv_id)
+            all_invoices.append(inv)
+            new_count += 1
+        logger.info(
+            f"AR: status={status} returned {len(result)} ({new_count} new, "
+            f"{dup_count} dup already counted)"
+        )
+
+    logger.info(f"AR: fetched {len(all_invoices)} unique open invoices total")
     return all_invoices
 
 
