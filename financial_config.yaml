@@ -71,22 +71,30 @@ qbo:
 # v1: manual_balance is used. Update the number when you get it from the vendor.
 # v2: flip auto: true once foremen reliably enter expenses in Jobber with the
 # vendor name in the description. Then balance = sum of matching Jobber expenses MTD.
+# Vendor accounts. "auto: true" means: start from manual_balance as of
+# manual_balance_as_of, then ADD all Jobber Expenses tagged with the
+# vendor (matched by parse_patterns) dated strictly after the as_of date.
+#
+# When you pay a vendor and want to reset the accumulator, either:
+#   1. Update manual_balance + manual_balance_as_of here and push, OR
+#   2. Set Balance + As Of for that vendor in the "Vendor Balances" Sheet tab
+#      (sheet entries win over config; no deploy required).
 vendors:
   - name: "Lurvey's"
     parse_patterns: ["lurvey"]
     auto: true
-    manual_balance: null
-    manual_balance_as_of: null
+    manual_balance: 5926.47
+    manual_balance_as_of: "2026-05-17"
   - name: "Des Plaines Material"
     parse_patterns: ["des plaines"]
     auto: true
-    manual_balance: null
-    manual_balance_as_of: null
+    manual_balance: 1238.10
+    manual_balance_as_of: "2026-05-17"
   - name: "Patriot Materials"
     parse_patterns: ["patriot"]
     auto: true
-    manual_balance: null
-    manual_balance_as_of: null
+    manual_balance: 3000.00
+    manual_balance_as_of: "2026-05-17"
 
 # Recurring overhead bills. Edit this list directly when something changes.
 # billing_day = day-of-month the bill hits (1-31). Leave null if irregular/unknown.

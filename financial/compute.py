@@ -62,53 +62,95 @@ def compute_ar(invoices=None):
 # ---------------------------------------------------------------------------
 
 def compute_vendor_balances(today=None, sheet_overrides=None):
-    """Compute vendor balances. sheet_overrides (from sheets_overrides.read_vendor_overrides)
-    takes precedence over the YAML config when present.
+    """Compute vendor balances using an anchor + accumulator model.
+
+    For each vendor:
+      anchor_balance  = sheet override (if set) OR config manual_balance
+      anchor_date     = sheet override 'as of' OR config manual_balance_as_of
+      accumulator     = sum of Jobber Expenses tagged with the vendor name
+                        and dated strictly after anchor_date
+      balance         = anchor_balance + accumulator (when auto: true)
+
+    When Alex pays a vendor and wants to reset the accumulator, he updates
+    Balance + As Of in the Vendor Balances Google Sheet (sheet wins). The
+    new anchor date causes the accumulator to restart from there.
     """
     today = today or date.today()
     cfg = vendors_cfg()
     sheet_overrides = sheet_overrides or {}
-    # Build case-insensitive lookup for sheet overrides
     sheet_lookup = {k.strip().lower(): v for k, v in sheet_overrides.items()}
 
-    # Only fetch expenses if any vendor is in auto mode
+    def _resolve_anchor(v):
+        """Return (anchor_balance, anchor_date_str, mode)."""
+        ov = sheet_lookup.get(v["name"].strip().lower())
+        if ov:
+            return (round(float(ov["balance"]), 2), ov.get("as_of") or None, "sheet")
+        mb = v.get("manual_balance")
+        if mb is not None:
+            return (round(float(mb), 2), v.get("manual_balance_as_of") or None, "manual")
+        return (0.0, None, "manual")
+
+    def _parse_date(s):
+        try:
+            return date.fromisoformat(str(s)) if s else None
+        except (ValueError, TypeError):
+            return None
+
+    # Compute earliest anchor date across all auto vendors so one fetch
+    # covers everyone. Per-vendor filtering happens in-memory below.
+    auto_vendors = [v for v in cfg if v.get("auto")]
+    earliest_anchor = None
+    for v in auto_vendors:
+        _, anchor_str, _ = _resolve_anchor(v)
+        d = _parse_date(anchor_str)
+        if d and (earliest_anchor is None or d < earliest_anchor):
+            earliest_anchor = d
+
     expenses = None
-    auto_needed = any(v.get("auto") for v in cfg)
-    if auto_needed:
-        mtd_start = today.replace(day=1)
-        expenses = fetch_expenses_since(mtd_start)
+    if auto_vendors:
+        fetch_from = earliest_anchor or today.replace(day=1)
+        expenses = fetch_expenses_since(fetch_from)
 
     results = []
     grand_total = 0.0
     for v in cfg:
+        anchor_balance, anchor_date_str, mode = _resolve_anchor(v)
         entry = {
             "name": v["name"],
-            "mode": "auto" if v.get("auto") else "manual",
-            "balance": 0.0,
-            "as_of": None,
+            "mode": mode,
+            "balance": anchor_balance,
+            "as_of": anchor_date_str,
             "source_note": "",
             "expense_count": 0,
+            "anchor_balance": anchor_balance,
+            "accumulated": 0.0,
         }
 
-        # Sheet override wins over both auto and manual
-        override = sheet_lookup.get(v["name"].strip().lower())
-        if override:
-            entry["balance"] = round(override["balance"], 2)
-            entry["as_of"] = override.get("as_of") or None
-            entry["mode"] = "sheet"
-            entry["source_note"] = "from 'Vendor Balances' sheet"
-        elif v.get("auto"):
-            matches = expenses_for_vendor(expenses or [], v.get("parse_patterns", []))
-            entry["balance"] = round(sum(e["total"] for e in matches), 2)
-            entry["expense_count"] = len(matches)
+        if v.get("auto"):
+            anchor_date = _parse_date(anchor_date_str) or (earliest_anchor or today.replace(day=1))
+            anchor_iso = anchor_date.isoformat()
+            # Filter expenses: matches vendor patterns AND dated AFTER anchor.
+            matched = expenses_for_vendor(expenses or [], v.get("parse_patterns", []))
+            matched_after = [
+                e for e in matched
+                if e.get("date") and e["date"] > anchor_iso
+            ]
+            accumulated = round(sum(e["total"] for e in matched_after), 2)
+            entry["mode"] = "auto"
+            entry["accumulated"] = accumulated
+            entry["expense_count"] = len(matched_after)
+            entry["balance"] = round(anchor_balance + accumulated, 2)
             entry["as_of"] = today.isoformat()
-            entry["source_note"] = f"sum of {len(matches)} Jobber expense(s) MTD"
+            entry["source_note"] = (
+                f"${anchor_balance:,.2f} as of {anchor_date_str or 'fetch start'} "
+                f"+ {len(matched_after)} tagged expense(s) totalling ${accumulated:,.2f}"
+            )
         else:
-            mb = v.get("manual_balance")
-            entry["balance"] = round(float(mb), 2) if mb is not None else 0.0
-            entry["as_of"] = v.get("manual_balance_as_of")
-            entry["source_note"] = "manual entry in financial_config.yaml"
-            if mb is None:
+            entry["source_note"] = (
+                "manual entry in financial_config.yaml"
+                if mode == "manual" else "from 'Vendor Balances' sheet"
+            )
+            if v.get("manual_balance") is None and mode == "manual":
                 entry["source_note"] += " (not yet set — appears as $0)"
 
         results.append(entry)

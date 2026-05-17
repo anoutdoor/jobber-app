@@ -186,16 +186,29 @@ def render_email(snapshot, today=None):
     vendor_rows = ""
     for v in vendors.get("vendors", []):
         mode = v.get("mode") or "manual"
+        anchor = v.get("anchor_balance", 0.0)
+        accumulated = v.get("accumulated", 0.0)
+        count = v.get("expense_count", 0)
+
         if mode == "auto":
-            count = v.get("expense_count", 0)
-            tag_text = f"auto, {count} expense{'s' if count != 1 else ''} MTD"
+            # Show "starting $X + $Y from N expenses" so the breakdown is visible
+            tag_text = (
+                f"{_money(anchor)} starting + {_money(accumulated)} from "
+                f"{count} tagged expense{'s' if count != 1 else ''}"
+            )
         elif mode == "sheet":
             tag_text = "sheet override"
         else:
             tag_text = "manual"
-        tag = f" <span style='font-size:11px;color:#888'>({escape(tag_text)})</span>"
-        as_of = f" <span style='font-size:11px;color:#888'>as of {escape(str(v['as_of']))}</span>" if v.get("as_of") else ""
-        vendor_rows += f"<tr><td style='padding:4px 8px'>{escape(v['name'])}{tag}{as_of}</td><td style='padding:4px 8px;text-align:right;font-variant-numeric:tabular-nums'>{_money(v['balance'])}</td></tr>"
+
+        tag = f"<div style='font-size:11px;color:#888;margin-top:2px'>{escape(tag_text)}</div>"
+        as_of = f"<div style='font-size:11px;color:#888'>as of {escape(str(v['as_of']))}</div>" if v.get("as_of") else ""
+        vendor_rows += (
+            f"<tr>"
+            f"<td style='padding:4px 8px'>{escape(v['name'])}{tag}{as_of}</td>"
+            f"<td style='padding:4px 8px;text-align:right;font-variant-numeric:tabular-nums;vertical-align:top'>{_money(v['balance'])}</td>"
+            f"</tr>"
+        )
     vendor_html = (
         _section_header(f"Vendor accounts — {_money(vendors.get('total', 0))} owed")
         + "<table style='width:100%;font-family:Helvetica,Arial,sans-serif;font-size:13px;border-collapse:collapse'>"
