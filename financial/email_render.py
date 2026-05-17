@@ -185,7 +185,15 @@ def render_email(snapshot, today=None):
     # --- Vendors ---
     vendor_rows = ""
     for v in vendors.get("vendors", []):
-        tag = " <span style='font-size:11px;color:#888'>(manual)</span>" if v["mode"] == "manual" else " <span style='font-size:11px;color:#888'>(auto)</span>"
+        mode = v.get("mode") or "manual"
+        if mode == "auto":
+            count = v.get("expense_count", 0)
+            tag_text = f"auto, {count} expense{'s' if count != 1 else ''} MTD"
+        elif mode == "sheet":
+            tag_text = "sheet override"
+        else:
+            tag_text = "manual"
+        tag = f" <span style='font-size:11px;color:#888'>({escape(tag_text)})</span>"
         as_of = f" <span style='font-size:11px;color:#888'>as of {escape(str(v['as_of']))}</span>" if v.get("as_of") else ""
         vendor_rows += f"<tr><td style='padding:4px 8px'>{escape(v['name'])}{tag}{as_of}</td><td style='padding:4px 8px;text-align:right;font-variant-numeric:tabular-nums'>{_money(v['balance'])}</td></tr>"
     vendor_html = (
