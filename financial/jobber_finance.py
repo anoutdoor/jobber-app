@@ -189,11 +189,18 @@ def fetch_expenses_since(start_date):
     """Return all expenses with `date` on or after start_date (date object).
 
     Uses Jobber's server-side ExpenseFilterAttributes.date range filter.
+
+    Jobber's `after` is strictly greater-than. Expenses with a date-only
+    value are stored as midnight UTC of that day, so `after: 2026-05-17T00:00:00Z`
+    would EXCLUDE same-day expenses. To include same-day expenses dated on
+    start_date itself, pass `start_date - 1 day` as the API filter and let
+    the caller (compute_vendor_balances) filter inclusively on the day.
     """
+    from datetime import timedelta as _td
     expenses = []
     cursor = None
-    # ExpenseFilter.date expects Iso8601DateTimeRangeInput -> use a full timestamp
-    start_dt_iso = f"{start_date.isoformat()}T00:00:00Z"
+    api_from = start_date - _td(days=1)
+    start_dt_iso = f"{api_from.isoformat()}T00:00:00Z"
 
     while True:
         data = graphql_request(EXPENSES_QUERY, {"cursor": cursor, "from": start_dt_iso})
