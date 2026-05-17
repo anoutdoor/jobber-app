@@ -129,21 +129,23 @@ def compute_vendor_balances(today=None, sheet_overrides=None):
         if v.get("auto"):
             anchor_date = _parse_date(anchor_date_str) or (earliest_anchor or today.replace(day=1))
             anchor_iso = anchor_date.isoformat()
-            # Filter expenses: matches vendor patterns AND dated AFTER anchor.
+            # Filter expenses: matches vendor patterns AND dated on or after anchor.
+            # Inclusive so that resetting the anchor today (after a payment, say)
+            # immediately catches today's new expenses too.
             matched = expenses_for_vendor(expenses or [], v.get("parse_patterns", []))
-            matched_after = [
+            matched_from = [
                 e for e in matched
-                if e.get("date") and e["date"] > anchor_iso
+                if e.get("date") and e["date"] >= anchor_iso
             ]
-            accumulated = round(sum(e["total"] for e in matched_after), 2)
+            accumulated = round(sum(e["total"] for e in matched_from), 2)
             entry["mode"] = "auto"
             entry["accumulated"] = accumulated
-            entry["expense_count"] = len(matched_after)
+            entry["expense_count"] = len(matched_from)
             entry["balance"] = round(anchor_balance + accumulated, 2)
             entry["as_of"] = today.isoformat()
             entry["source_note"] = (
                 f"${anchor_balance:,.2f} as of {anchor_date_str or 'fetch start'} "
-                f"+ {len(matched_after)} tagged expense(s) totalling ${accumulated:,.2f}"
+                f"+ {len(matched_from)} tagged expense(s) totalling ${accumulated:,.2f}"
             )
         else:
             entry["source_note"] = (
