@@ -278,13 +278,20 @@ def outstanding_quotes():
         if pages > page_limit:
             break
         data = gql(query, {"cursor": cursor}, access_token=session.get("access_token"))
-        if not data or not data.get("data"):
-            last_err = "no response"
+        if not data:
+            last_err = "graphql_request returned None (check Railway logs for HTTP error body)"
             break
+        # Check errors first — Jobber returns 200 with errors-only body for
+        # schema mismatches, throttle, etc. and we want to see WHAT it said.
         if data.get("errors"):
             last_err = data["errors"]
+            if not data.get("data"):
+                break  # no data at all, just errors
+            # else partial data; keep going with what's there
+        qdata = (data.get("data") or {}).get("quotes")
+        if not qdata:
+            last_err = last_err or "data.quotes missing"
             break
-        qdata = data["data"].get("quotes", {})
         nodes = qdata.get("nodes", [])
         for n in nodes:
             s = (n.get("quoteStatus") or "").lower()
