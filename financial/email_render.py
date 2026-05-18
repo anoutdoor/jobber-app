@@ -248,7 +248,7 @@ def render_email(snapshot, today=None):
         totals_block = ""
 
     payroll_html = (
-        _section_header(f"Payroll accrued — {_money(payroll.get('total_accrual', 0))} (week starting {escape(payroll.get('week_start', ''))})")
+        _section_header(f"Payroll accrued — {_money(payroll.get('total_accrual', 0))} (unpaid hours since {escape(payroll.get('week_start', ''))})")
         + "<table style='width:100%;font-family:Helvetica,Arial,sans-serif;font-size:13px;border-collapse:collapse'>"
         + payroll_rows
         + "</table>"

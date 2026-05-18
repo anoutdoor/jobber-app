@@ -357,14 +357,25 @@ query AllUsers($cursor: String) {
 
 
 def current_pay_week_start(today=None):
-    """The Monday that begins the currently-in-progress pay week.
+    """The Monday that begins the oldest CURRENTLY-UNPAID pay window.
 
-    If today is Mon-Sun, return this week's Monday. After Sunday at midnight
-    we roll to a new week.
+    A&N runs payroll Wednesday for the prior Mon-Sun work week, with money
+    leaving the bank Thursday morning. So:
+
+      Mon-Thu: last week's hours (Mon-Sun of prior week) are still owed.
+               Accrual window = previous Monday through 'now'.
+      Fri-Sun: last week has been paid out Thursday. Accrual window =
+               this week's Monday through 'now'.
+
+    Thursday is treated like Mon-Wed because the 6am cron runs before
+    Thursday's payroll actually goes through. By Friday morning, payroll
+    has hit the bank and last week is settled.
     """
     today = today or date.today()
-    # weekday: Mon=0 ... Sun=6
-    return today - timedelta(days=today.weekday())
+    wd = today.weekday()  # Mon=0 ... Sun=6
+    if wd <= 3:  # Mon, Tue, Wed, Thu — previous week still on the books
+        return today - timedelta(days=wd + 7)
+    return today - timedelta(days=wd)  # Fri-Sun — only current week unpaid
 
 
 def fetch_users():
