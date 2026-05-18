@@ -246,13 +246,10 @@ def outstanding_quotes():
     import csv, io
     from flask import Response
 
-    # Server-side filter by status — cuts pagination from "every quote ever"
-    # to just the awaiting_response ones (usually a handful).
     # Drop lineItems from the selection (very heavy on Jobber's cost budget;
-    # we were timing out trying to paginate paid quotes that won't be shown).
-    query = """
-    query OutstandingQuotes($cursor: String) {
-      quotes(filter: { status: awaiting_response }, first: 50, after: $cursor) {
+    # we were timing out trying to paginate paid/expired quotes that won't
+    # be shown anyway).
+    nodes_block = """
         nodes {
           quoteNumber title quoteStatus sentAt
           amounts { total }
@@ -264,33 +261,47 @@ def outstanding_quotes():
           property { address { street city province postalCode } }
         }
         pageInfo { hasNextPage endCursor }
-      }
-    }
     """
+    filter_query = (
+        "query OutstandingQuotes($cursor: String) { "
+        "quotes(filter: { status: awaiting_response }, first: 50, after: $cursor) {"
+        + nodes_block + "} }"
+    )
+    nofilter_query = (
+        "query OutstandingQuotes($cursor: String) { "
+        "quotes(first: 50, after: $cursor) {"
+        + nodes_block + "} }"
+    )
 
-    all_quotes = []
-    cursor = None
-    pages = 0
-    while True:
-        pages += 1
-        if pages > 10:  # safety: 50 * 10 = 500 awaiting_response quotes is plenty
-            break
-        data = gql(query, {"cursor": cursor}, access_token=session.get("access_token"))
-        if not data or not data.get("data"):
-            break
-        if data.get("errors"):
-            return jsonify({"errors": data["errors"]}), 400
-        qdata = data["data"].get("quotes", {})
-        nodes = qdata.get("nodes", [])
-        # Server filter handles status; belt-and-suspenders filter retained
-        # in case Jobber ever returns a stray.
-        for n in nodes:
-            if n.get("quoteStatus") == "awaiting_response":
-                all_quotes.append(n)
-        pi = qdata.get("pageInfo", {})
-        if not pi.get("hasNextPage"):
-            break
-        cursor = pi.get("endCursor")
+    def _paginate(query, filter_client_side):
+        out = []
+        cursor = None
+        pages = 0
+        while True:
+            pages += 1
+            if pages > 20:
+                break
+            data = gql(query, {"cursor": cursor}, access_token=session.get("access_token"))
+            if not data or not data.get("data"):
+                return out, ("no response" if not out else None)
+            if data.get("errors"):
+                return out, data["errors"]
+            qdata = data["data"].get("quotes", {})
+            nodes = qdata.get("nodes", [])
+            for n in nodes:
+                if not filter_client_side or n.get("quoteStatus") == "awaiting_response":
+                    out.append(n)
+            pi = qdata.get("pageInfo", {})
+            if not pi.get("hasNextPage"):
+                break
+            cursor = pi.get("endCursor")
+        return out, None
+
+    # First try server-side status filter (fast). If it errors or returns
+    # nothing, fall back to client-side filter (slower but reliable).
+    all_quotes, err = _paginate(filter_query, filter_client_side=False)
+    if err or not all_quotes:
+        all_quotes, _ = _paginate(nofilter_query, filter_client_side=True)
 
     fmt = request.args.get("format", "json")
 
