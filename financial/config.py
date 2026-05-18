@@ -43,4 +43,10 @@ def anomaly_settings():
 
 
 def qbo_settings():
-    return load_config().get("qbo", {"mode": "api"})
+    return load_config().get("qbo", {})
+
+
+def qbo_accounts():
+    """Configured bank + CC accounts. Balances may be overridden by the
+    'Balance Overrides' Google Sheet tab (id-keyed)."""
+    return load_config().get("qbo", {}).get("accounts", []) or []

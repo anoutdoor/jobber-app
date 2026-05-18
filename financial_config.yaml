@@ -8,64 +8,30 @@ email:
   subject_prefix: "A&N Daily Cashflow"
   send_hour_ct: 6      # 24h local time. Scheduler is timezone-aware.
 
-# QuickBooks Online — bank + credit card balances.
-# mode: 'manual' uses the values below (good while production API is gated).
-# mode: 'api'    pulls live from QBO every run.
+# Bank + credit card accounts. No QBO API integration — balances come
+# entirely from this list and from the "Balance Overrides" Google Sheet
+# tab. Sheet entries (matched by id) win over the values here.
+#
+# type: "Bank" = cash on hand (positive number = money you have)
+# type: "Credit Card" = debt owed (positive number = money you owe)
+#
+# Update workflow: open the job-costing Google Sheet -> "Balance Overrides"
+# tab -> update Balance + As Of for the accounts that moved. No deploy
+# needed. The id column there maps to the id field below.
 qbo:
-  mode: api
-  api:
-    # Hide accounts from the cashflow view (personal cards mixed into QBO, etc.).
-    # Find IDs by visiting /qbo/test and copying the "id" field of an account.
-    excluded_account_ids: []
-    # Examples (uncomment + edit to filter personal cards out):
-    # excluded_account_ids:
-    #   - "91"    # 2713 Alex Bootz Chase Business Unlimited CC
-    #   - "1150040024"  # Capital One Spark 2% Alex
-
-    # Override the QBO API balance for specific accounts. The Accounting API only
-    # returns the 'posted' (in-QB) balance, which lags the real bank balance shown
-    # in the QBO UI. Use this to pin the real bank balance for any account where
-    # the gap matters. Account ID maps to the same id field surfaced in /qbo/test.
-    #
-    # Values are in "human" sign convention: positive for Bank cash on hand,
-    # positive for CC debt. Update as_of when you refresh the number.
-    balance_overrides:
-      # Bank accounts
-      "94":             # 0607 Axos Savings
-        balance: 8070.42
-        as_of: "2026-05-17"
-      "38":             # Chase Checking (6906) — main operating
-        balance: 58229.67
-        as_of: "2026-05-17"
-      # Credit cards
-      "92":             # 0749 Niko Chase Business Unlimited
-        balance: 214.97
-        as_of: "2026-05-17"
-      "1150040017":     # 1757 (4091 parent subaccount)
-        balance: 0.00
-        as_of: "2026-05-17"
-      "88":             # 4971 A. ROGEL - 2
-        balance: 0.00
-        as_of: "2026-05-17"
-      "89":             # 6540 Niko Chase Business Cash Card
-        balance: 161.33
-        as_of: "2026-05-17"
-      "68":             # 4091 Alex Chase Business Cash Credit card
-        balance: 71.19
-        as_of: "2026-05-17"
-      "1150040024":     # Capital One Spark 2% Alex
-        balance: 8601.47
-        as_of: "2026-05-17"
-      "48":             # Capital One Credit card
-        balance: 15637.12
-        as_of: "2026-05-17"
-  manual:
-    as_of: null         # set to today's ISO date when you update the numbers
-    cash_accounts:      # bank accounts: positive numbers = cash you have
-      - {name: "Chase Operating", balance: 0.00}
-      - {name: "Chase Savings",   balance: 0.00}
-    cc_accounts:        # credit cards: positive numbers = debt owed
-      - {name: "Co CC (Chase Ink Business)", balance: 0.00}
+  accounts:
+    # Bank accounts
+    - {id: "94",         name: "0607 Axos Savings",                  type: "Bank",        balance: 8070.42,  as_of: "2026-05-17"}
+    - {id: "38",         name: "Chase Checking (6906)",              type: "Bank",        balance: 58229.67, as_of: "2026-05-17"}
+    - {id: "31",         name: "QuickBooks Checking Account",        type: "Bank",        balance: 1.39,     as_of: "2026-05-17"}
+    # Credit cards
+    - {id: "92",         name: "0749 Niko Chase Business Unlimited", type: "Credit Card", balance: 214.97,   as_of: "2026-05-17"}
+    - {id: "1150040017", name: "1757 (4091 parent subaccount)",      type: "Credit Card", balance: 0.00,     as_of: "2026-05-17"}
+    - {id: "88",         name: "4971 A. ROGEL - 2",                  type: "Credit Card", balance: 0.00,     as_of: "2026-05-17"}
+    - {id: "89",         name: "6540 Niko Chase Business Cash Card", type: "Credit Card", balance: 161.33,   as_of: "2026-05-17"}
+    - {id: "68",         name: "4091 Alex Chase Business Cash Card", type: "Credit Card", balance: 71.19,    as_of: "2026-05-17"}
+    - {id: "1150040024", name: "Capital One Spark 2% Alex",          type: "Credit Card", balance: 8601.47,  as_of: "2026-05-17"}
+    - {id: "48",         name: "Capital One Credit card",            type: "Credit Card", balance: 15637.12, as_of: "2026-05-17"}
 
 # Vendor accounts where A&N has a charge tab (not on credit card).
 # v1: manual_balance is used. Update the number when you get it from the vendor.
