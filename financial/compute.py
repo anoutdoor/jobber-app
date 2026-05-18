@@ -232,7 +232,12 @@ def compute_payroll_accrual(today=None, entries=None):
         total_gross += u["estimated_pay"]
         total_hours += u["hours"]
 
-    breakdown = sorted(by_user.values(), key=lambda u: u["estimated_pay"], reverse=True)
+    # Filter to users who actually worked. Zero-hour entries come from
+    # clock-ins that are still ticking (finalDuration=0 until clock-out)
+    # or short/test entries; they're noise here and they trigger spurious
+    # "missing wage rate" warnings when included.
+    breakdown = [u for u in by_user.values() if u["hours"] > 0]
+    breakdown.sort(key=lambda u: u["estimated_pay"], reverse=True)
 
     # Tax burden (employer-side FICA, Medicare, UI, workers' comp, etc.).
     # Configurable in financial_config.yaml under payroll.tax_burden_pct.
