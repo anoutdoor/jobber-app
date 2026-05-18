@@ -246,10 +246,12 @@ def outstanding_quotes():
     import csv, io
     from flask import Response
 
-    # Drop lineItems from the selection (very heavy on Jobber's cost budget;
-    # we were timing out trying to paginate paid/expired quotes that won't
-    # be shown anyway).
-    nodes_block = """
+    # Paginate quotes and filter client-side. We tried server-side filter
+    # earlier but the enum value we guessed (awaiting_response) didn't match
+    # what Jobber's QuoteStatusTypeEnum expects, so we punt to Python-side.
+    query = """
+    query OutstandingQuotes($cursor: String) {
+      quotes(first: 50, after: $cursor) {
         nodes {
           quoteNumber title quoteStatus sentAt
           amounts { total }
@@ -261,47 +263,47 @@ def outstanding_quotes():
           property { address { street city province postalCode } }
         }
         pageInfo { hasNextPage endCursor }
+      }
+    }
     """
-    filter_query = (
-        "query OutstandingQuotes($cursor: String) { "
-        "quotes(filter: { status: awaiting_response }, first: 50, after: $cursor) {"
-        + nodes_block + "} }"
-    )
-    nofilter_query = (
-        "query OutstandingQuotes($cursor: String) { "
-        "quotes(first: 50, after: $cursor) {"
-        + nodes_block + "} }"
-    )
 
-    def _paginate(query, filter_client_side):
-        out = []
-        cursor = None
-        pages = 0
-        while True:
-            pages += 1
-            if pages > 20:
-                break
-            data = gql(query, {"cursor": cursor}, access_token=session.get("access_token"))
-            if not data or not data.get("data"):
-                return out, ("no response" if not out else None)
-            if data.get("errors"):
-                return out, data["errors"]
-            qdata = data["data"].get("quotes", {})
-            nodes = qdata.get("nodes", [])
-            for n in nodes:
-                if not filter_client_side or n.get("quoteStatus") == "awaiting_response":
-                    out.append(n)
-            pi = qdata.get("pageInfo", {})
-            if not pi.get("hasNextPage"):
-                break
-            cursor = pi.get("endCursor")
-        return out, None
+    all_quotes = []
+    statuses_seen = {}
+    pages = 0
+    page_limit = int(request.args.get("max_pages", "30"))
+    cursor = None
+    last_err = None
+    while True:
+        pages += 1
+        if pages > page_limit:
+            break
+        data = gql(query, {"cursor": cursor}, access_token=session.get("access_token"))
+        if not data or not data.get("data"):
+            last_err = "no response"
+            break
+        if data.get("errors"):
+            last_err = data["errors"]
+            break
+        qdata = data["data"].get("quotes", {})
+        nodes = qdata.get("nodes", [])
+        for n in nodes:
+            s = (n.get("quoteStatus") or "").lower()
+            statuses_seen[s] = statuses_seen.get(s, 0) + 1
+            if s == "awaiting_response":
+                all_quotes.append(n)
+        pi = qdata.get("pageInfo", {})
+        if not pi.get("hasNextPage"):
+            break
+        cursor = pi.get("endCursor")
 
-    # First try server-side status filter (fast). If it errors or returns
-    # nothing, fall back to client-side filter (slower but reliable).
-    all_quotes, err = _paginate(filter_query, filter_client_side=False)
-    if err or not all_quotes:
-        all_quotes, _ = _paginate(nofilter_query, filter_client_side=True)
+    # Diagnostic header for debugging: shows statuses Jobber actually returned
+    # across the scanned quotes. Visible in JSON output below.
+    diagnostics = {
+        "pages_scanned": pages,
+        "total_quotes_scanned": sum(statuses_seen.values()),
+        "statuses_seen": statuses_seen,
+        "last_error": last_err,
+    }
 
     fmt = request.args.get("format", "json")
 
@@ -357,8 +359,11 @@ def outstanding_quotes():
         return Response(si.getvalue(), mimetype="text/csv",
                         headers={"Content-Disposition": "attachment; filename=outstanding_quotes.csv"})
 
-    return jsonify({"total_clients": len(rows), "clients": rows})
-    return jsonify(data)
+    return jsonify({
+        "total_clients": len(rows),
+        "clients": rows,
+        "diagnostics": diagnostics,
+    })
 
 
 @app.route("/dashboard")
