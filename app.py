@@ -246,9 +246,13 @@ def outstanding_quotes():
     import csv, io
     from flask import Response
 
+    # Server-side filter by status — cuts pagination from "every quote ever"
+    # to just the awaiting_response ones (usually a handful).
+    # Drop lineItems from the selection (very heavy on Jobber's cost budget;
+    # we were timing out trying to paginate paid quotes that won't be shown).
     query = """
     query OutstandingQuotes($cursor: String) {
-      quotes(first: 10, after: $cursor) {
+      quotes(filter: { status: awaiting_response }, first: 50, after: $cursor) {
         nodes {
           quoteNumber title quoteStatus sentAt
           amounts { total }
@@ -258,7 +262,6 @@ def outstanding_quotes():
             emails { address primary }
           }
           property { address { street city province postalCode } }
-          lineItems { nodes { name description quantity unitPrice totalPrice } }
         }
         pageInfo { hasNextPage endCursor }
       }
@@ -267,12 +270,20 @@ def outstanding_quotes():
 
     all_quotes = []
     cursor = None
+    pages = 0
     while True:
+        pages += 1
+        if pages > 10:  # safety: 50 * 10 = 500 awaiting_response quotes is plenty
+            break
         data = gql(query, {"cursor": cursor}, access_token=session.get("access_token"))
         if not data or not data.get("data"):
             break
+        if data.get("errors"):
+            return jsonify({"errors": data["errors"]}), 400
         qdata = data["data"].get("quotes", {})
         nodes = qdata.get("nodes", [])
+        # Server filter handles status; belt-and-suspenders filter retained
+        # in case Jobber ever returns a stray.
         for n in nodes:
             if n.get("quoteStatus") == "awaiting_response":
                 all_quotes.append(n)
