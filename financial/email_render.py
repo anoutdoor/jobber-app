@@ -70,18 +70,38 @@ def render_email(snapshot, today=None):
     """
 
     # --- Unavailable data warning (loud, top of email) ---
+    # When any Jobber source is dead, include a one-click re-auth link
+    # since the fix is always the same (/login silent OAuth).
     unavail_html = ""
     if unavailable:
         items = "".join(f"<li>{escape(s)}</li>" for s in unavailable)
+        base_url = "https://jobber-app-production.up.railway.app"
+
+        action_buttons = ""
+        if any("Jobber" in s for s in unavailable):
+            action_buttons += (
+                f"<a href='{base_url}/login' "
+                f"style='display:inline-block;background:#a02020;color:#fff;"
+                f"padding:10px 18px;border-radius:6px;text-decoration:none;"
+                f"font-weight:600;margin-right:8px'>Re-authorize Jobber</a>"
+            )
+        if any("QuickBooks" in s or "QBO" in s for s in unavailable):
+            action_buttons += (
+                f"<a href='{base_url}/qbo/login' "
+                f"style='display:inline-block;background:#a02020;color:#fff;"
+                f"padding:10px 18px;border-radius:6px;text-decoration:none;"
+                f"font-weight:600;margin-right:8px'>Re-authorize QuickBooks</a>"
+            )
+
         unavail_html = f"""
         <div style='background:#ffe0e0;border:2px solid #a02020;padding:14px 18px;margin-bottom:16px;font-family:Helvetica,Arial,sans-serif;border-radius:6px'>
           <div style='font-size:16px;font-weight:700;color:#a02020;text-transform:uppercase;letter-spacing:1px'>⚠ Data source(s) unavailable</div>
           <ul style='margin:8px 0 4px 18px;padding:0;color:#222'>{items}</ul>
-          <div style='font-size:12px;color:#555;margin-top:6px'>
+          <div style='font-size:12px;color:#555;margin:6px 0 10px'>
             The numbers below for the affected source(s) are zeros, not real values.
-            Likely cause: OAuth tokens expired/revoked. Visit the relevant /login route on the app
-            to re-authorize.
+            Likely cause: OAuth tokens expired overnight. One click fixes it:
           </div>
+          <div>{action_buttons}</div>
         </div>
         """
 
