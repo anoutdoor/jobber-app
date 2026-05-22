@@ -21,17 +21,18 @@ email:
 qbo:
   accounts:
     # Bank accounts
-    - {id: "94",         name: "0607 Axos Savings",                  type: "Bank",        balance: 8070.42,  as_of: "2026-05-17"}
-    - {id: "38",         name: "Chase Checking (6906)",              type: "Bank",        balance: 58229.67, as_of: "2026-05-17"}
+    - {id: "94",         name: "0607 Axos Savings",                  type: "Bank",        balance: 8070.42,  as_of: "2026-05-20"}
+    - {id: "38",         name: "Chase Checking (6906)",              type: "Bank",        balance: 23596.88, as_of: "2026-05-20"}
     - {id: "31",         name: "QuickBooks Checking Account",        type: "Bank",        balance: 1.39,     as_of: "2026-05-17"}
     # Credit cards
-    - {id: "92",         name: "0749 Niko Chase Business Unlimited", type: "Credit Card", balance: 214.97,   as_of: "2026-05-17"}
+    - {id: "92",         name: "0749 Niko Chase Business Unlimited", type: "Credit Card", balance: 1941.69,  as_of: "2026-05-20"}
     - {id: "1150040017", name: "1757 (4091 parent subaccount)",      type: "Credit Card", balance: 0.00,     as_of: "2026-05-17"}
     - {id: "88",         name: "4971 A. ROGEL - 2",                  type: "Credit Card", balance: 0.00,     as_of: "2026-05-17"}
-    - {id: "89",         name: "6540 Niko Chase Business Cash Card", type: "Credit Card", balance: 161.33,   as_of: "2026-05-17"}
-    - {id: "68",         name: "4091 Alex Chase Business Cash Card", type: "Credit Card", balance: 71.19,    as_of: "2026-05-17"}
-    - {id: "1150040024", name: "Capital One Spark 2% Alex",          type: "Credit Card", balance: 8601.47,  as_of: "2026-05-17"}
-    - {id: "48",         name: "Capital One Credit card",            type: "Credit Card", balance: 15637.12, as_of: "2026-05-17"}
+    - {id: "1150040018", name: "2052",                               type: "Credit Card", balance: 242.42,   as_of: "2026-05-20"}
+    - {id: "89",         name: "6540 Niko Chase Business Cash Card", type: "Credit Card", balance: 1295.93,  as_of: "2026-05-20"}
+    - {id: "68",         name: "4091 Alex Chase Business Cash Card", type: "Credit Card", balance: 133.19,   as_of: "2026-05-20"}
+    - {id: "1150040024", name: "Capital One Spark 2% Alex",          type: "Credit Card", balance: 13622.00, as_of: "2026-05-20"}
+    - {id: "48",         name: "Capital One Credit card",            type: "Credit Card", balance: 13689.66, as_of: "2026-05-20"}
 
 # Vendor accounts where A&N has a charge tab (not on credit card).
 # v1: manual_balance is used. Update the number when you get it from the vendor.
