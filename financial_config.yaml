@@ -23,7 +23,7 @@ qbo:
     # Bank accounts
     - {id: "94",         name: "0607 Axos Savings",                  type: "Bank",        balance: 8070.42,  as_of: "2026-05-20"}
     - {id: "38",         name: "Chase Checking (6906)",              type: "Bank",        balance: 23596.88, as_of: "2026-05-20"}
-    - {id: "31",         name: "QuickBooks Checking Account",        type: "Bank",        balance: 1.39,     as_of: "2026-05-17"}
+    - {id: "31",         name: "QuickBooks Checking Account",        type: "Bank",        balance: 1.39,     as_of: "2026-05-20"}
     # Credit cards
     - {id: "92",         name: "0749 Niko Chase Business Unlimited", type: "Credit Card", balance: 1941.69,  as_of: "2026-05-20"}
     - {id: "1150040017", name: "1757 (4091 parent subaccount)",      type: "Credit Card", balance: 0.00,     as_of: "2026-05-17"}

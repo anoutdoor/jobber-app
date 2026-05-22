@@ -57,11 +57,12 @@ def _compute_flags(snapshot, previous):
     pos = snapshot["position"]
 
     # Stale account balances — flag any that haven't been refreshed in >3 days.
-    # Only checks accounts with non-zero balance so $0 placeholders don't spam.
+    # Only flags accounts with meaningful balances ($10+), so $0 placeholders
+    # and trivial leftovers (QB Checking at $1.39) don't spam the warnings.
     qbo = snapshot["qbo"]
     stale = []
     for a in (qbo.get("cash_accounts") or []) + (qbo.get("cc_accounts") or []):
-        if not a.get("balance"):
+        if abs(a.get("balance") or 0) < 10:
             continue
         as_of = a.get("as_of")
         if not as_of:
@@ -77,7 +78,7 @@ def _compute_flags(snapshot, previous):
             "Account balances haven't been refreshed in >3 days: "
             + ", ".join(stale[:5])
             + (f" + {len(stale)-5} more" if len(stale) > 5 else "")
-            + ". Update the 'Balance Overrides' Sheet tab."
+            + ". Update via the 'Balance Overrides' Sheet tab or financial_config.yaml."
         )
 
     # Day-over-day cash drop
