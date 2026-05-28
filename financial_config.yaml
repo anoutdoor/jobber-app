@@ -100,6 +100,11 @@ overhead:
 payroll:
   rate_overrides: {}      # e.g. "Erick Gonzalez": 22.00
   tax_burden_pct: 10
+  # The LAST DAY (Sunday) of the most recently paid-out pay period.
+  # Accrual window = day after this through 'now'. Update this each
+  # Thursday after payroll lands, same time you refresh Chase Checking.
+  # If missing or >14 days old, code falls back to a day-of-week heuristic.
+  last_payroll_paid_through: "2026-05-24"
 
 # AR aging buckets. "Current" = not yet past due (days past due <= 0).
 ar:

@@ -357,25 +357,38 @@ query AllUsers($cursor: String) {
 
 
 def current_pay_week_start(today=None):
-    """The Monday that begins the oldest CURRENTLY-UNPAID pay window.
+    """Start date for the unpaid payroll accrual window.
 
-    A&N runs payroll Wednesday for the prior Mon-Sun work week, with money
-    leaving the bank Thursday morning. So:
+    Primary source: payroll.last_payroll_paid_through in financial_config.yaml.
+    Set that to the LAST DAY (Sunday) of the most recently paid pay period.
+    Accrual then starts the day after.
 
-      Mon-Thu: last week's hours (Mon-Sun of prior week) are still owed.
-               Accrual window = previous Monday through 'now'.
-      Fri-Sun: last week has been paid out Thursday. Accrual window =
-               this week's Monday through 'now'.
+    Workflow: each Thursday after payroll lands, Alex updates the config
+    value to that pay period's Sunday (same moment he updates Chase Checking
+    balance to reflect the post-payroll cash).
 
-    Thursday is treated like Mon-Wed because the 6am cron runs before
-    Thursday's payroll actually goes through. By Friday morning, payroll
-    has hit the bank and last week is settled.
+    Falls back to a day-of-week heuristic if the config value is missing,
+    invalid, or absurdly old (>14 days).
     """
     today = today or date.today()
-    wd = today.weekday()  # Mon=0 ... Sun=6
-    if wd <= 3:  # Mon, Tue, Wed, Thu — previous week still on the books
+
+    try:
+        # Local import to avoid circular dep with financial.config
+        from financial.config import payroll_settings
+        last_paid_str = (payroll_settings() or {}).get("last_payroll_paid_through")
+        if last_paid_str:
+            last_paid = date.fromisoformat(str(last_paid_str))
+            age = (today - last_paid).days
+            if 0 <= age <= 14:
+                return last_paid + timedelta(days=1)
+    except (ValueError, TypeError, ImportError):
+        pass
+
+    # Heuristic fallback: Mon-Wed include last week, Thu-Sun current only.
+    wd = today.weekday()
+    if wd <= 2:
         return today - timedelta(days=wd + 7)
-    return today - timedelta(days=wd)  # Fri-Sun — only current week unpaid
+    return today - timedelta(days=wd)
 
 
 def fetch_users():
