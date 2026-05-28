@@ -55,8 +55,8 @@ vendors:
   - name: "Des Plaines Material"
     parse_patterns: ["des plaines"]
     auto: true
-    manual_balance: 1238.10
-    manual_balance_as_of: "2026-05-17"
+    manual_balance: 4656.00
+    manual_balance_as_of: "2026-05-20"
   - name: "Patriot Materials"
     parse_patterns: ["patriot"]
     auto: true
