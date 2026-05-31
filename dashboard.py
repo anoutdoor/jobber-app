@@ -3,6 +3,8 @@ from collections import defaultdict
 
 from jobber_sync import get_sheets_client, SHEET_ID
 
+MONTHLY_OVERHEAD = 35192.83   # total monthly company overhead; month-level net only, never per job
+
 
 def safe_float(val, default=0.0):
     try:
@@ -86,9 +88,13 @@ def compute_dashboard():
     month_job_count = len(month_jobs)
 
     gm_vals = [j["gross_margin_pct"] for j in month_jobs if j["gross_margin_pct"] is not None]
-    nm_vals = [j["net_margin_pct"]   for j in month_jobs if j["net_margin_pct"]   is not None]
     avg_gross_margin = round(sum(gm_vals) / len(gm_vals), 1) if gm_vals else None
-    avg_net_margin   = round(sum(nm_vals) / len(nm_vals), 1) if nm_vals else None
+
+    # Net is computed at the month level only: total gross profit minus the flat
+    # company overhead. We never allocate overhead per job.
+    month_gross_profit = round(sum(j["gross_profit"] for j in month_jobs), 2)
+    month_net_profit   = round(month_gross_profit - MONTHLY_OVERHEAD, 2)
+    avg_net_margin     = round(month_net_profit / month_revenue * 100, 1) if month_revenue else None
 
     # ── Hours KPIs ───────────────────────────────────────────────────────────
     total_estimated_hours = 0.0
@@ -103,7 +109,7 @@ def compute_dashboard():
             jobs_with_estimates += 1
 
     # ── Crew leaderboard ─────────────────────────────────────────────────────
-    CREWS = ["Ernesto", "Arturo", "Gonzalo", "Other"]
+    CREWS = ["Ernesto", "Jovani", "Jorge", "Other"]
     crew_stats = {}
     for crew in CREWS:
         cj = [j for j in month_jobs if j["crew"] == crew]
@@ -194,6 +200,9 @@ def compute_dashboard():
         "month_job_count":      month_job_count,
         "avg_gross_margin":     avg_gross_margin,
         "avg_net_margin":       avg_net_margin,
+        "month_gross_profit":   month_gross_profit,
+        "month_net_profit":     month_net_profit,
+        "monthly_overhead":     MONTHLY_OVERHEAD,
         "crew_stats":           crew_stats,
         "crews":                CREWS,
         "crew_margin_chart":    crew_margin_chart,

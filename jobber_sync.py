@@ -31,16 +31,22 @@ GOOGLE_CLIENT_SECRETS_FILE = os.getenv("GOOGLE_CLIENT_SECRETS_FILE", "client_sec
 SHEET_ID = os.getenv("GOOGLE_SHEET_ID")
 
 # ---------------------------------------------------------------------------
-# Crew config — priority order matters (first match wins)
+# Crew config — lead-based assignment, priority order matters (first match wins)
+# A job's crew = whichever LEAD clocked into it (from timeSheetEntries names).
+# Lead names MUST match Jobber's user name.full EXACTLY — verify against the
+# Jobs sheet's Team Members column if jobs land in "Other".
 # ---------------------------------------------------------------------------
-CREW_CONFIG = [
-    {"name": "Ernesto Cardenas", "crew_label": "Ernesto", "daily_overhead": 346},
-    {"name": "Arturo L Marin",   "crew_label": "Arturo",  "daily_overhead": 295},
-    {"name": "Gonzalo Feroz",    "crew_label": "Gonzalo", "daily_overhead": 252},
+CREW_LEADS = [
+    {"name": "Ernesto Cardenas",         "crew_label": "Ernesto"},
+    {"name": "Jovanni Garduno Martinez", "crew_label": "Jovani"},
+    {"name": "Gonzalo Cardenas",         "crew_label": "Mow"},
+    # Jorge is LAST on purpose: he flexes to drive for Jovani, so when both
+    # clocked in, the job is Jovani's.
+    {"name": "Jorge Armenta",            "crew_label": "Jorge"},
 ]
 
-# Crews that split daily overhead proportionally across multiple jobs per day
-PROPORTIONAL_OVERHEAD_CREWS = {"Arturo", "Gonzalo"}
+# Install crews shown on the job-costing dashboard (Mow gets its own later)
+INSTALL_CREWS = {"Ernesto", "Jovani", "Jorge"}
 
 # ---------------------------------------------------------------------------
 # GraphQL query — labor cost pulled directly from Jobber
@@ -289,11 +295,11 @@ def fetch_all_closed_jobs():
 # Costing logic
 # ---------------------------------------------------------------------------
 
-def resolve_crew(assigned_names):
-    for config in CREW_CONFIG:
-        if config["name"] in assigned_names:
-            return config["crew_label"], config["daily_overhead"]
-    return "Other", 0
+def resolve_crew(worked_names):
+    for lead in CREW_LEADS:
+        if lead["name"] in worked_names:
+            return lead["crew_label"]
+    return "Other"
 
 
 def count_visit_days(visits):
@@ -323,7 +329,7 @@ def cost_job(job):
     timesheet_nodes = (job.get("timeSheetEntries") or {}).get("nodes", [])
     worked_names = list({((n.get("user") or {}).get("name") or {}).get("full", "") for n in timesheet_nodes if ((n.get("user") or {}).get("name") or {}).get("full")})
 
-    crew_label, daily_overhead_rate = resolve_crew(worked_names)
+    crew_label = resolve_crew(worked_names)
     team_count = len(worked_names) or 1
 
     visit_nodes = (job.get("visits") or {}).get("nodes", [])
@@ -380,30 +386,17 @@ def cost_job(job):
         "synced_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"),
     }
 
-    if crew_label in PROPORTIONAL_OVERHEAD_CREWS:
-        # Pass 1: defer overhead-dependent fields until 8pm reconciliation
-        base.update({
-            "daily_overhead_rate": "Pending",
-            "total_overhead": "Pending",
-            "total_job_cost": "Pending",
-            "net_profit": "Pending",
-            "net_margin_pct": "Pending",
-            "net_margin_flag": "Pending",
-        })
-    else:
-        # Ernesto: full daily overhead applied immediately
-        total_overhead = round(visit_day_count * daily_overhead_rate, 2)
-        total_job_cost = round(total_overhead + labor_cost + materials_cost, 2)
-        net_profit = round(invoice_total - total_job_cost, 2)
-        net_margin_pct = round(net_profit / invoice_total * 100, 2) if invoice_total else 0.0
-        base.update({
-            "daily_overhead_rate": daily_overhead_rate,
-            "total_overhead": total_overhead,
-            "total_job_cost": total_job_cost,
-            "net_profit": net_profit,
-            "net_margin_pct": net_margin_pct,
-            "net_margin_flag": "FLAG: BELOW 15%" if net_margin_pct < 15 else "",
-        })
+    # Overhead is no longer allocated per job. Net is reported month-level only
+    # (see dashboard.py MONTHLY_OVERHEAD). These columns stay blank to preserve
+    # the sheet layout without implying any per-job net.
+    base.update({
+        "daily_overhead_rate": "",
+        "total_overhead": "",
+        "total_job_cost": "",
+        "net_profit": "",
+        "net_margin_pct": "",
+        "net_margin_flag": "",
+    })
 
     return base
 
@@ -572,108 +565,11 @@ def _col_to_letter(n):
 
 
 def reconcile_daily_overhead():
-    from collections import defaultdict
-    logger.info("=== Daily overhead reconciliation starting ===")
-
-    if not SHEET_ID:
-        return {"status": "error", "message": "GOOGLE_SHEET_ID not set"}
-
-    try:
-        gc = get_sheets_client()
-        spreadsheet = gc.open_by_key(SHEET_ID)
-        jobs_ws = spreadsheet.worksheet("Jobs")
-    except Exception as e:
-        logger.error(f"Sheets error in reconciliation: {e}")
-        return {"status": "error", "message": str(e)}
-
-    all_values = jobs_ws.get_all_values()
-    if len(all_values) < 2:
-        return {"status": "ok", "reconciled": 0, "message": "No data rows"}
-
-    headers = all_values[0]
-    col = {h: i for i, h in enumerate(headers)}
-
-    required = [
-        "Total Overhead ($)", "Crew", "Close Date", "Labor Hours", "Team Count",
-        "Daily Overhead Rate ($)", "Total Job Cost ($)", "Labor Cost ($)",
-        "Materials Cost ($)", "Invoice Total ($)", "Net Profit ($)",
-        "Net Margin %", "Net Margin Flag",
-    ]
-    missing = [f for f in required if f not in col]
-    if missing:
-        msg = f"Missing sheet columns: {missing}"
-        logger.error(msg)
-        return {"status": "error", "message": msg}
-
-    # Collect rows where overhead is still Pending
-    pending = []
-    for row_idx, row in enumerate(all_values[1:], start=2):
-        overhead_val = row[col["Total Overhead ($)"]] if len(row) > col["Total Overhead ($)"] else ""
-        if overhead_val == "Pending":
-            pending.append((row_idx, row))
-
-    if not pending:
-        logger.info("No pending rows to reconcile.")
-        return {"status": "ok", "reconciled": 0, "message": "No pending rows"}
-
-    # Group by (crew, close_date)
-    groups = defaultdict(list)
-    for row_idx, row in pending:
-        crew = row[col["Crew"]] if len(row) > col["Crew"] else ""
-        close_date = (row[col["Close Date"]] if len(row) > col["Close Date"] else "")[:10]
-        groups[(crew, close_date)].append((row_idx, row))
-
-    batch_updates = []
-    reconciled = 0
-
-    for (crew, close_date), group_rows in groups.items():
-        daily_rate = next(
-            (c["daily_overhead"] for c in CREW_CONFIG if c["crew_label"] == crew), 0
-        )
-
-        # job duration = labor_hours / team_count (calendar hours the crew was on site)
-        durations = []
-        for _, row in group_rows:
-            labor_h = float(row[col["Labor Hours"]] or 0) if len(row) > col["Labor Hours"] else 0
-            t_count = int(row[col["Team Count"]] or 1) if len(row) > col["Team Count"] else 1
-            durations.append(labor_h / t_count if t_count else labor_h)
-
-        total_dur = sum(durations)
-
-        for i, (row_idx, row) in enumerate(group_rows):
-            proportion = durations[i] / total_dur if total_dur else 1.0 / len(group_rows)
-            overhead = round(daily_rate * proportion, 2)
-
-            labor_cost    = float(row[col["Labor Cost ($)"]]    or 0) if len(row) > col["Labor Cost ($)"]    else 0
-            materials_cost = float(row[col["Materials Cost ($)"]] or 0) if len(row) > col["Materials Cost ($)"] else 0
-            invoice_total  = float(row[col["Invoice Total ($)"]]  or 0) if len(row) > col["Invoice Total ($)"]  else 0
-
-            total_job_cost = round(overhead + labor_cost + materials_cost, 2)
-            net_profit     = round(invoice_total - total_job_cost, 2)
-            net_margin_pct = round(net_profit / invoice_total * 100, 2) if invoice_total else 0.0
-            net_margin_flag = "FLAG: BELOW 15%" if net_margin_pct < 15 else ""
-
-            for field, value in [
-                ("Daily Overhead Rate ($)", daily_rate),
-                ("Total Overhead ($)",      overhead),
-                ("Total Job Cost ($)",      total_job_cost),
-                ("Net Profit ($)",          net_profit),
-                ("Net Margin %",            net_margin_pct),
-                ("Net Margin Flag",         net_margin_flag),
-            ]:
-                col_letter = _col_to_letter(col[field] + 1)
-                batch_updates.append({
-                    "range": f"{col_letter}{row_idx}",
-                    "values": [[value]],
-                })
-
-            reconciled += 1
-
-    if batch_updates:
-        jobs_ws.batch_update(batch_updates)
-
-    logger.info(f"=== Reconciliation complete: {reconciled} rows updated ===")
-    return {"status": "ok", "reconciled": reconciled}
+    # Per-job overhead allocation was removed — net is reported month-level only
+    # (dashboard.py MONTHLY_OVERHEAD). This is now a safe no-op so the existing
+    # /reconcile-now route and the daily scheduler call don't error.
+    logger.info("Overhead reconciliation is a no-op (per-job overhead removed; net is month-level).")
+    return {"status": "ok", "reconciled": 0}
 
 
 # ---------------------------------------------------------------------------

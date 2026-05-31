@@ -1,10 +1,9 @@
 import logging
-from collections import defaultdict
 
 from jobber_sync import (
     graphql_request, cost_job, row_from_costed,
     get_sheets_client, ensure_sheets, load_synced_ids, save_synced_ids,
-    SHEET_ID, CREW_CONFIG,
+    SHEET_ID,
 )
 
 logger = logging.getLogger(__name__)
@@ -100,54 +99,6 @@ def _fetch_by_status(status):
 
 
 # ---------------------------------------------------------------------------
-# Resolve proportional overhead for Arturo / Gonzalo upfront
-# (backfill has all historical data at once — no need for Pending state)
-# ---------------------------------------------------------------------------
-
-def _resolve_proportional_overhead(costed_jobs):
-    groups = defaultdict(list)
-    for i, job in enumerate(costed_jobs):
-        if job.get("total_overhead") == "Pending":
-            groups[(job["crew"], job["close_date"])].append(i)
-
-    for (crew, close_date), indices in groups.items():
-        daily_rate = next(
-            (c["daily_overhead"] for c in CREW_CONFIG if c["crew_label"] == crew), 0
-        )
-
-        durations = []
-        for i in indices:
-            j = costed_jobs[i]
-            labor_h    = j.get("labor_hours") or 0
-            team_count = j.get("team_count") or 1
-            durations.append(labor_h / team_count if team_count else labor_h)
-
-        total_dur = sum(durations)
-
-        for idx, i in enumerate(indices):
-            proportion    = durations[idx] / total_dur if total_dur else 1.0 / len(indices)
-            overhead      = round(daily_rate * proportion, 2)
-            labor_cost    = costed_jobs[i].get("labor_cost", 0) or 0
-            materials_cost = costed_jobs[i].get("materials_cost", 0) or 0
-            invoice_total = costed_jobs[i].get("invoice_total", 0) or 0
-
-            total_job_cost = round(overhead + labor_cost + materials_cost, 2)
-            net_profit     = round(invoice_total - total_job_cost, 2)
-            net_margin_pct = round(net_profit / invoice_total * 100, 2) if invoice_total else 0.0
-
-            costed_jobs[i].update({
-                "daily_overhead_rate": daily_rate,
-                "total_overhead":      overhead,
-                "total_job_cost":      total_job_cost,
-                "net_profit":          net_profit,
-                "net_margin_pct":      net_margin_pct,
-                "net_margin_flag":     "FLAG: BELOW 15%" if net_margin_pct < 15 else "",
-            })
-
-    return costed_jobs
-
-
-# ---------------------------------------------------------------------------
 # Read existing Job IDs from the sheet (source of truth for deduplication)
 # ---------------------------------------------------------------------------
 
@@ -233,14 +184,7 @@ def run_backfill():
         except Exception as e:
             logger.error(f"Failed to cost job {job.get('jobNumber')}: {e}")
 
-    # 7. Resolve Arturo / Gonzalo overhead immediately (no Pending in backfill)
-    costed = _resolve_proportional_overhead(costed)
-    pending_remaining = sum(1 for c in costed if c.get("total_overhead") == "Pending")
-    if pending_remaining:
-        logger.warning(f"{pending_remaining} jobs still have Pending overhead after resolution")
-    logger.info("Proportional overhead resolved.")
-
-    # 8. Write all rows in a single batch request to avoid Sheets rate limits
+    # 7. Write all rows in a single batch request to avoid Sheets rate limits
     rows = [row_from_costed(c) for c in costed]
     errors = []
 
