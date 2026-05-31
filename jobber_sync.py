@@ -296,8 +296,11 @@ def fetch_all_closed_jobs():
 # ---------------------------------------------------------------------------
 
 def resolve_crew(worked_names):
+    # Jobber's name.full sometimes carries trailing whitespace (e.g.
+    # "Gonzalo Cardenas "), so compare against a stripped set.
+    stripped = {n.strip() for n in worked_names}
     for lead in CREW_LEADS:
-        if lead["name"] in worked_names:
+        if lead["name"] in stripped:
             return lead["crew_label"]
     return "Other"
 
