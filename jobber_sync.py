@@ -58,7 +58,7 @@ SYNC_START_DATE = "2026-05-25"
 # ---------------------------------------------------------------------------
 JOBS_QUERY = """
 query GetClosedJobs($cursor: String) {
-  jobs(filter: { status: requires_invoicing }, first: 10, after: $cursor) {
+  jobs(filter: { status: __STATUS__ }, first: 10, after: $cursor) {
     nodes {
       id
       title
@@ -270,30 +270,40 @@ def graphql_request(query, variables=None, access_token=None, _retry=True):
     return body
 
 
+# Statuses that represent a finished job. requires_invoicing catches jobs that
+# are done but not yet invoiced; archived catches jobs that have been invoiced
+# and closed out. Without archived, a job leaves requires_invoicing the moment
+# it's invoiced, so the sync could never pull a post-invoice edit to its total.
+CLOSED_JOB_STATUSES = ["requires_invoicing", "archived"]
+
+
 def fetch_all_closed_jobs():
-    jobs = []
-    cursor = None
+    by_id = {}
 
-    while True:
-        data = graphql_request(JOBS_QUERY, {"cursor": cursor})
-        if not data:
-            break
+    for status in CLOSED_JOB_STATUSES:
+        query = JOBS_QUERY.replace("__STATUS__", status)
+        cursor = None
+        while True:
+            data = graphql_request(query, {"cursor": cursor})
+            if not data:
+                break
 
-        jobs_data = (data.get("data") or {}).get("jobs")
-        if not jobs_data:
-            logger.error(f"Unexpected GraphQL response shape: {json.dumps(data)[:500]}")
-            break
+            jobs_data = (data.get("data") or {}).get("jobs")
+            if not jobs_data:
+                logger.error(f"Unexpected GraphQL response shape ({status}): {json.dumps(data)[:500]}")
+                break
 
-        nodes = jobs_data.get("nodes", [])
-        jobs.extend(nodes)
-        logger.info(f"Fetched page of {len(nodes)} jobs (total so far: {len(jobs)})")
+            nodes = jobs_data.get("nodes", [])
+            for node in nodes:
+                by_id[node.get("id")] = node
+            logger.info(f"[{status}] page of {len(nodes)} jobs (unique so far: {len(by_id)})")
 
-        page_info = jobs_data.get("pageInfo", {})
-        if not page_info.get("hasNextPage"):
-            break
-        cursor = page_info.get("endCursor")
+            page_info = jobs_data.get("pageInfo", {})
+            if not page_info.get("hasNextPage"):
+                break
+            cursor = page_info.get("endCursor")
 
-    return jobs
+    return list(by_id.values())
 
 
 # ---------------------------------------------------------------------------
