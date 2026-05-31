@@ -609,14 +609,7 @@ def run_sync():
     jobs = [j for j in jobs if (j.get("completedAt") or "")[:10] >= SYNC_START_DATE]
     logger.info(f"After fresh-start cutoff ({SYNC_START_DATE}): {len(jobs)}")
 
-    synced_ids = load_synced_ids()
-    new_jobs = [j for j in jobs if j.get("id") not in synced_ids]
-    logger.info(f"New jobs to write: {len(new_jobs)}")
-
-    if not new_jobs:
-        write_last_sync("ok", 0, "No new jobs.")
-        return {"status": "ok", "synced": 0, "message": "No new jobs to sync."}
-
+    # Connect to the sheet first so we can diff against what's already there.
     try:
         gc = get_sheets_client()
         spreadsheet = gc.open_by_key(SHEET_ID)
@@ -628,32 +621,74 @@ def run_sync():
         write_last_sync("error", 0, msg)
         return {"status": "error", "message": msg}
 
-    rows = []
+    # Map existing Job ID -> sheet row number so we can overwrite a job in place
+    # when its Jobber numbers change, instead of only ever appending new jobs.
+    # Row 1 is the header, so data rows are numbered from 2.
+    try:
+        existing_values = jobs_ws.get_all_values()
+        id_to_row = {
+            r[0]: idx
+            for idx, r in enumerate(existing_values[1:], start=2)
+            if r and r[0]
+        }
+    except Exception as e:
+        msg = f"Failed to read existing rows: {e}"
+        logger.error(msg)
+        write_last_sync("error", 0, msg)
+        return {"status": "error", "message": msg}
+
+    last_col = _col_to_letter(len(JOBS_HEADERS))
+
+    appends = []
+    updates = []  # batch_update payload: {"range", "values"}
     errors = []
-    for job in new_jobs:
+    for job in jobs:
         try:
-            rows.append((job.get("id"), row_from_costed(cost_job(job))))
+            row = row_from_costed(cost_job(job))
         except Exception as e:
             msg = f"Job {job.get('jobNumber')}: {e}"
             logger.error(msg)
             errors.append(msg)
+            continue
+
+        existing_row = id_to_row.get(job.get("id"))
+        if existing_row:
+            updates.append({
+                "range": f"A{existing_row}:{last_col}{existing_row}",
+                "values": [row],
+            })
+        else:
+            appends.append(row)
 
     written = 0
-    if rows:
+    if appends:
         try:
-            jobs_ws.append_rows([r for _, r in rows], value_input_option="RAW")
-            for job_id, _ in rows:
-                synced_ids.add(job_id)
-            written = len(rows)
+            jobs_ws.append_rows(appends, value_input_option="RAW")
+            written = len(appends)
         except Exception as e:
-            msg = f"Batch write failed: {e}"
+            msg = f"Batch append failed: {e}"
             logger.error(msg)
             errors.append(msg)
 
+    updated = 0
+    if updates:
+        try:
+            jobs_ws.batch_update(updates, value_input_option="RAW")
+            updated = len(updates)
+        except Exception as e:
+            msg = f"Batch update failed: {e}"
+            logger.error(msg)
+            errors.append(msg)
+
+    # synced_jobs.json is no longer the dedup gate (the sheet is the source of
+    # truth now), but keep it current so nothing downstream reads stale state.
+    synced_ids = load_synced_ids()
+    synced_ids.update(j.get("id") for j in jobs)
     save_synced_ids(synced_ids)
-    write_last_sync("ok", written)
-    logger.info(f"=== Sync complete: {written} jobs written ===")
-    result = {"status": "ok", "synced": written}
+
+    write_last_sync("ok", written + updated)
+    logger.info(f"=== Sync complete: {written} added, {updated} updated ===")
+    result = {"status": "ok", "synced": written, "updated": updated}
     if errors:
         result["errors"] = errors
     return result
