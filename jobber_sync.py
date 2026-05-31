@@ -48,6 +48,11 @@ CREW_LEADS = [
 # Install crews shown on the job-costing dashboard (Mow gets its own later)
 INSTALL_CREWS = {"Ernesto", "Jovani", "Jorge"}
 
+# Fresh-start cutoff: ignore everything completed before this date. The sheet
+# was wiped of older/duplicated rows on 2026-05-31; this keeps old jobs from
+# syncing back in. Format: YYYY-MM-DD.
+SYNC_START_DATE = "2026-05-25"
+
 # ---------------------------------------------------------------------------
 # GraphQL query — labor cost pulled directly from Jobber
 # ---------------------------------------------------------------------------
@@ -600,6 +605,9 @@ def run_sync():
 
     jobs = [j for j in all_jobs if (j.get("jobType") or "").upper() != "RECURRING"]
     logger.info(f"After filtering recurring jobs: {len(jobs)}")
+
+    jobs = [j for j in jobs if (j.get("completedAt") or "")[:10] >= SYNC_START_DATE]
+    logger.info(f"After fresh-start cutoff ({SYNC_START_DATE}): {len(jobs)}")
 
     synced_ids = load_synced_ids()
     new_jobs = [j for j in jobs if j.get("id") not in synced_ids]

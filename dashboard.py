@@ -5,6 +5,10 @@ from jobber_sync import get_sheets_client, SHEET_ID
 
 MONTHLY_OVERHEAD = 35192.83   # total monthly company overhead; month-level net only, never per job
 
+# Fresh-start cutoff: the dashboard only shows jobs completed on/after this date
+# (matches jobber_sync.SYNC_START_DATE). Anything older is ignored.
+DASHBOARD_START_DATE = date(2026, 5, 25)
+
 
 def safe_float(val, default=0.0):
     try:
@@ -25,13 +29,24 @@ def get_sheet_jobs():
 
 def parse_jobs(raw):
     parsed = []
+    seen_ids = set()
     for job in raw:
+        # Dedupe on the unique Jobber Job ID (the sheet has historical dupes).
+        job_id = str(job.get("Job ID", "")).strip()
+        if job_id:
+            if job_id in seen_ids:
+                continue
+            seen_ids.add(job_id)
+
         close_str = str(job.get("Close Date", ""))[:10]
         if not close_str or len(close_str) < 10:
             continue
         try:
             close_date = date.fromisoformat(close_str)
         except ValueError:
+            continue
+
+        if close_date < DASHBOARD_START_DATE:
             continue
 
         def pending_or_float(key):
