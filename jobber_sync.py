@@ -53,6 +53,16 @@ INSTALL_CREWS = {"Ernesto", "Jovani", "Jorge"}
 # syncing back in. Format: YYYY-MM-DD.
 SYNC_START_DATE = "2026-05-25"
 
+# Specific older jobs we still want on the dashboard despite the cutoff above.
+# Matched case-insensitively (whitespace collapsed) as a substring of the
+# Jobber client name. Keep this list small and deliberate.
+CUTOFF_EXEMPT_CLIENTS = ["james cory"]
+
+
+def is_cutoff_exempt(client_name):
+    n = " ".join((client_name or "").split()).lower()
+    return any(exempt in n for exempt in CUTOFF_EXEMPT_CLIENTS)
+
 # ---------------------------------------------------------------------------
 # GraphQL query — labor cost pulled directly from Jobber
 # ---------------------------------------------------------------------------
@@ -616,7 +626,11 @@ def run_sync():
     jobs = [j for j in all_jobs if (j.get("jobType") or "").upper() != "RECURRING"]
     logger.info(f"After filtering recurring jobs: {len(jobs)}")
 
-    jobs = [j for j in jobs if (j.get("completedAt") or "")[:10] >= SYNC_START_DATE]
+    jobs = [
+        j for j in jobs
+        if (j.get("completedAt") or "")[:10] >= SYNC_START_DATE
+        or is_cutoff_exempt((j.get("client") or {}).get("name"))
+    ]
     logger.info(f"After fresh-start cutoff ({SYNC_START_DATE}): {len(jobs)}")
 
     # Connect to the sheet first so we can diff against what's already there.

@@ -1,7 +1,7 @@
 from datetime import date, timedelta
 from collections import defaultdict
 
-from jobber_sync import get_sheets_client, SHEET_ID
+from jobber_sync import get_sheets_client, SHEET_ID, is_cutoff_exempt
 
 MONTHLY_OVERHEAD = 35192.83   # total monthly company overhead; month-level net only, never per job
 
@@ -46,7 +46,7 @@ def parse_jobs(raw):
         except ValueError:
             continue
 
-        if close_date < DASHBOARD_START_DATE:
+        if close_date < DASHBOARD_START_DATE and not is_cutoff_exempt(job.get("Client", "")):
             continue
 
         def pending_or_float(key):
