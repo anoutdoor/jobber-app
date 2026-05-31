@@ -396,7 +396,7 @@
 
   <!-- Crew Leaderboard -->
   <div class="section-title">Crew Leaderboard</div>
-  {% set crew_colors = {"Ernesto": "#8b5cf6", "Arturo": "#3b82f6", "Gonzalo": "#f59e0b", "Other": "#555e71"} %}
+  {% set crew_colors = {"Ernesto": "#8b5cf6", "Jovani": "#3b82f6", "Jorge": "#f59e0b", "Other": "#555e71"} %}
   {% set best_margin = [] %}
   {% for crew in data.crews %}{% set s = data.crew_stats[crew] %}{% if s.avg_gross_margin is not none %}{% if not best_margin or s.avg_gross_margin > best_margin[0] %}{% if best_margin.append(s.avg_gross_margin) or best_margin.__delitem__(0) is none %}{% endif %}{% elif best_margin %}{% endif %}{% endif %}{% endfor %}
   <div class="row g-3">
@@ -464,8 +464,12 @@
           <div class="week-metric-value">${{ "{:,.0f}".format(week.revenue) }}</div>
         </div>
         <div class="week-metric">
-          <div class="week-metric-label">Cost</div>
-          <div class="week-metric-value sm">{% if week.total_cost is not none %}${{ "{:,.0f}".format(week.total_cost) }}{% else %}<span class="val-muted">—</span>{% endif %}</div>
+          <div class="week-metric-label">Labor</div>
+          <div class="week-metric-value sm">${{ "{:,.0f}".format(week.labor) }}</div>
+        </div>
+        <div class="week-metric">
+          <div class="week-metric-label">Materials</div>
+          <div class="week-metric-value sm">${{ "{:,.0f}".format(week.materials) }}</div>
         </div>
         <div class="week-metric">
           <div class="week-metric-label">Gross P.</div>
@@ -475,18 +479,6 @@
           <div class="week-metric-label">GM%</div>
           <div class="week-metric-value sm {% if week.gross_margin is not none %}{% if week.gross_margin >= 45 %}green{% else %}red{% endif %}{% endif %}">
             {% if week.gross_margin is not none %}{{ week.gross_margin }}%{% else %}—{% endif %}
-          </div>
-        </div>
-        <div class="week-metric">
-          <div class="week-metric-label">Net P.</div>
-          <div class="week-metric-value sm {% if week.net_profit is not none %}{% if week.net_profit >= 0 %}green{% else %}red{% endif %}{% endif %}">
-            {% if week.net_profit is not none %}${{ "{:,.0f}".format(week.net_profit) }}{% else %}<span class="val-muted">—</span>{% endif %}
-          </div>
-        </div>
-        <div class="week-metric">
-          <div class="week-metric-label">NM%</div>
-          <div class="week-metric-value sm {% if week.net_margin is not none %}{% if week.net_margin >= 15 %}green{% else %}red{% endif %}{% endif %}">
-            {% if week.net_margin is not none %}{{ week.net_margin }}%{% else %}—{% endif %}
           </div>
         </div>
         <div class="week-metric">

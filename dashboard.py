@@ -185,25 +185,20 @@ def compute_dashboard():
             continue
 
         wk_revenue   = round(sum(j["revenue"] for j in wk_jobs), 2)
-        wk_cost_vals = [j["total_job_cost"] for j in wk_jobs if j["total_job_cost"] is not None]
-        wk_cost      = round(sum(wk_cost_vals), 2) if wk_cost_vals else None
+        wk_labor     = round(sum(j["labor_cost"] for j in wk_jobs), 2)
+        wk_materials = round(sum(j["materials_cost"] for j in wk_jobs), 2)
         wk_gp        = round(sum(j["gross_profit"] for j in wk_jobs), 2)
         wk_gm        = round(wk_gp / wk_revenue * 100, 1) if wk_revenue else None
-
-        np_vals       = [j["net_profit"] for j in wk_jobs if j["net_profit"] is not None]
-        wk_np         = round(sum(np_vals), 2) if np_vals else None
-        wk_nm         = round(wk_np / wk_revenue * 100, 1) if (wk_np is not None and wk_revenue) else None
 
         weeks.append({
             "label":        f"{ws.strftime('%b %d')} – {we.strftime('%b %d')}",
             "start":        ws.isoformat(),
             "jobs":         len(wk_jobs),
             "revenue":      wk_revenue,
-            "total_cost":   wk_cost,
+            "labor":        wk_labor,
+            "materials":    wk_materials,
             "gross_profit": wk_gp,
             "gross_margin": wk_gm,
-            "net_profit":   wk_np,
-            "net_margin":   wk_nm,
             "job_list":     sorted(wk_jobs, key=lambda j: j["close_date"]),
         })
 
