@@ -4,7 +4,7 @@ from collections import defaultdict
 
 import pytz
 
-from jobber_sync import get_sheets_client, SHEET_ID, is_cutoff_exempt
+from jobber_sync import get_sheets_client, SHEET_ID, is_cutoff_exempt, JOBS_HEADERS
 
 # Business runs on Central time; Railway runs in UTC, so "today" must be Central
 # or the whole month/week view flips a day early every evening.
@@ -26,12 +26,41 @@ def safe_float(val, default=0.0):
 
 
 def get_sheet_jobs():
+    # NOTE: we deliberately use get_all_values() + manual mapping instead of
+    # gspread's get_all_records(), because get_all_records() throws on any
+    # duplicate or blank header in row 1. A single stray manual edit (e.g. a
+    # leftover tag column) would then blank the whole dashboard. Mapping by the
+    # known JOBS_HEADERS names instead makes the read immune to extra, blank, or
+    # duplicate columns, and to columns being reordered.
     try:
         gc = get_sheets_client()
         ws = gc.open_by_key(SHEET_ID).worksheet("Jobs")
-        return ws.get_all_records()
+        rows = ws.get_all_values()
     except Exception as e:
+        print(f"[dashboard] Jobs sheet read failed: {e}")
         return []
+
+    if len(rows) < 2:
+        return []
+
+    header_row = rows[0]
+    # Map each known header to its first matching column (first wins, so a
+    # duplicated header can't hijack the read).
+    col_index = {}
+    for i, name in enumerate(header_row):
+        name = (name or "").strip()
+        if name in JOBS_HEADERS and name not in col_index:
+            col_index[name] = i
+
+    records = []
+    for row in rows[1:]:
+        if not any((cell or "").strip() for cell in row):
+            continue  # skip fully blank rows
+        records.append({
+            name: (row[i] if i < len(row) else "")
+            for name, i in col_index.items()
+        })
+    return records
 
 
 def parse_jobs(raw):
@@ -64,10 +93,10 @@ def parse_jobs(raw):
             "job_number":       str(job.get("Job #", "")),
             "job_title":        str(job.get("Job Title", "")),
             "client":           str(job.get("Client", "")),
-            # A "Subcontractor" tag (e.g. Brock) overrides the timesheet-derived
-            # crew, so tagged jobs are treated as their own crew everywhere.
-            "crew":             (str(job.get("Subcontractor", "")).strip()
-                                 or str(job.get("Crew", "Unknown"))),
+            # Crew comes straight from the sync's "Crew" column. Subcontractors
+            # like Brock are resolved there too (from Jobber assigned users), so
+            # no separate handling is needed here.
+            "crew":             str(job.get("Crew", "Unknown")),
             "close_date":       close_date,
             "close_date_str":   close_str,
             "visit_days":       safe_float(job.get("Visit Days", 0)),
@@ -84,7 +113,6 @@ def parse_jobs(raw):
             "rev_per_visit_day": safe_float(job.get("Revenue / Visit Day ($)", 0)),
             "labor_hours":      safe_float(job.get("Labor Hours", 0)),
             "estimated_hours":  str(job.get("Estimated Hours", "")),
-            "subcontractor":    str(job.get("Subcontractor", "")).strip(),
         })
 
     parsed.sort(key=lambda x: x["close_date"], reverse=True)
