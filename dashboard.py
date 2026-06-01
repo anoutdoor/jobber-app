@@ -1,7 +1,13 @@
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from collections import defaultdict
 
+import pytz
+
 from jobber_sync import get_sheets_client, SHEET_ID, is_cutoff_exempt
+
+# Business runs on Central time; Railway runs in UTC, so "today" must be Central
+# or the whole month/week view flips a day early every evening.
+CENTRAL_TZ = pytz.timezone("America/Chicago")
 
 MONTHLY_OVERHEAD = 35192.83   # total monthly company overhead; month-level net only, never per job
 
@@ -94,7 +100,7 @@ def compute_dashboard():
     if not jobs:
         return None
 
-    today = date.today()
+    today = datetime.now(CENTRAL_TZ).date()
     cur_month = month_key(today)
 
     month_jobs = [j for j in jobs if month_key(j["close_date"]) == cur_month]

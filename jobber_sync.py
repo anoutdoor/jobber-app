@@ -3,6 +3,7 @@ import json
 import logging
 from datetime import datetime
 
+import pytz
 import requests
 from dotenv import load_dotenv
 import gspread
@@ -13,6 +14,28 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 load_dotenv()
 
 logger = logging.getLogger(__name__)
+
+# The business runs on Central time. Jobber returns UTC timestamps, and Railway
+# runs in UTC, so dates must be converted to Central or evening jobs roll into
+# the next day (e.g. 7pm CDT on the 31st reads as the 1st in UTC).
+CENTRAL_TZ = pytz.timezone("America/Chicago")
+
+
+def utc_iso_to_central_date(iso_str):
+    """Convert a Jobber UTC ISO8601 timestamp to its America/Chicago date (YYYY-MM-DD)."""
+    if not iso_str:
+        return ""
+    s = iso_str.strip()
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(s)
+    except ValueError:
+        return iso_str[:10]
+    if dt.tzinfo is None:
+        dt = pytz.utc.localize(dt)
+    return dt.astimezone(CENTRAL_TZ).date().isoformat()
+
 
 GRAPHQL_URL = "https://api.getjobber.com/api/graphql"
 GRAPHQL_VERSION = "2026-03-10"
@@ -396,7 +419,7 @@ def cost_job(job):
         "job_title": job.get("title", ""),
         "client_name": (job.get("client") or {}).get("name", ""),
         "property_address": format_address((job.get("property") or {}).get("address")),
-        "close_date": (job.get("completedAt") or "")[:10],
+        "close_date": utc_iso_to_central_date(job.get("completedAt")),
         "crew": crew_label,
         "team_members": ", ".join(worked_names),
         "team_count": team_count,
@@ -631,7 +654,7 @@ def run_sync():
 
     jobs = [
         j for j in jobs
-        if (j.get("completedAt") or "")[:10] >= SYNC_START_DATE
+        if utc_iso_to_central_date(j.get("completedAt")) >= SYNC_START_DATE
         or is_cutoff_exempt((j.get("client") or {}).get("name"))
     ]
     logger.info(f"After fresh-start cutoff ({SYNC_START_DATE}): {len(jobs)}")
