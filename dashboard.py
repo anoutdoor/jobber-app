@@ -53,7 +53,7 @@ def parse_jobs(raw):
         except ValueError:
             continue
 
-        if close_date < DASHBOARD_START_DATE and not is_cutoff_exempt(job.get("Client", "")):
+        if close_date < DASHBOARD_START_DATE and not is_cutoff_exempt(job.get("Job #", "")):
             continue
 
         def pending_or_float(key):
