@@ -1,3 +1,4 @@
+import calendar
 from datetime import date, datetime, timedelta
 from collections import defaultdict
 
@@ -63,7 +64,10 @@ def parse_jobs(raw):
             "job_number":       str(job.get("Job #", "")),
             "job_title":        str(job.get("Job Title", "")),
             "client":           str(job.get("Client", "")),
-            "crew":             str(job.get("Crew", "Unknown")),
+            # A "Subcontractor" tag (e.g. Brock) overrides the timesheet-derived
+            # crew, so tagged jobs are treated as their own crew everywhere.
+            "crew":             (str(job.get("Subcontractor", "")).strip()
+                                 or str(job.get("Crew", "Unknown"))),
             "close_date":       close_date,
             "close_date_str":   close_str,
             "visit_days":       safe_float(job.get("Visit Days", 0)),
@@ -131,7 +135,10 @@ def compute_dashboard():
             jobs_with_estimates += 1
 
     # ── Crew leaderboard ─────────────────────────────────────────────────────
-    CREWS = ["Ernesto", "Jovani", "Jorge", "Other"]
+    # Brock is a per-job subcontractor treated as a crew. His pay lives in
+    # materials_cost (the Jobber expense), so his card shows "paid" instead of
+    # rev/visit-day, but otherwise he behaves like any other crew.
+    CREWS = ["Ernesto", "Jovani", "Jorge", "Brock", "Other"]
     crew_stats = {}
     for crew in CREWS:
         cj = [j for j in month_jobs if j["crew"] == crew]
@@ -142,26 +149,8 @@ def compute_dashboard():
             "revenue":          round(sum(j["revenue"] for j in cj), 2),
             "avg_gross_margin": round(sum(cgm) / len(cgm), 1) if cgm else None,
             "avg_rev_per_day":  round(sum(rpd) / len(rpd), 2) if rpd else None,
+            "paid":             round(sum(j["materials_cost"] for j in cj), 2),
         }
-
-    # ── Subcontractor spot (Brock) ───────────────────────────────────────────
-    # Any job the user tagged in the sheet's "Subcontractor" column. Pay comes
-    # from the Jobber expense logged on the job (maps to materials_cost), so the
-    # math here matches the rest of the dashboard. Covers the full window, not
-    # just the current month, since sub jobs are sparse.
-    sub_jobs = [j for j in jobs if j.get("subcontractor")]
-    sub_revenue = round(sum(j["revenue"] for j in sub_jobs), 2)
-    sub_paid    = round(sum(j["materials_cost"] for j in sub_jobs), 2)
-    sub_profit  = round(sum(j["gross_profit"] for j in sub_jobs), 2)
-    sub_margin  = round(sub_profit / sub_revenue * 100, 1) if sub_revenue else None
-    subcontractor = {
-        "jobs":     len(sub_jobs),
-        "revenue":  sub_revenue,
-        "paid":     sub_paid,
-        "profit":   sub_profit,
-        "margin":   sub_margin,
-        "job_list": sorted(sub_jobs, key=lambda j: j["close_date"], reverse=True),
-    }
 
     # ── Chart: gross margin by crew ──────────────────────────────────────────
     crew_margin_chart = {
@@ -173,21 +162,19 @@ def compute_dashboard():
         ],
     }
 
-    # ── Chart: monthly revenue last 6 months ─────────────────────────────────
-    rev_labels, rev_data = [], []
-    for i in range(5, -1, -1):
-        m = today.month - i
-        y = today.year
-        while m <= 0:
-            m += 12
-            y -= 1
-        mk = f"{y}-{m:02d}"
-        label = date(y, m, 1).strftime("%b %Y")
-        total = round(sum(j["revenue"] for j in jobs if month_key(j["close_date"]) == mk), 2)
-        rev_labels.append(label)
-        rev_data.append(total)
-
-    monthly_revenue_chart = {"labels": rev_labels, "data": rev_data}
+    # ── Projected revenue (current-month run-rate) ───────────────────────────
+    # Simple linear pace: revenue so far / days elapsed * days in month. Far more
+    # useful than a 6-month history while the dataset is still being built up.
+    days_in_month = calendar.monthrange(today.year, today.month)[1]
+    day_of_month = today.day
+    projected_revenue = (
+        round(month_revenue / day_of_month * days_in_month, 2)
+        if day_of_month else month_revenue
+    )
+    projected_revenue_chart = {
+        "labels": ["Month so far", "Projected"],
+        "data":   [month_revenue, projected_revenue],
+    }
 
     # ── Chart: jobs per week last 8 weeks ────────────────────────────────────
     week_labels, week_counts = [], []
@@ -241,9 +228,11 @@ def compute_dashboard():
         "monthly_overhead":     MONTHLY_OVERHEAD,
         "crew_stats":           crew_stats,
         "crews":                CREWS,
-        "subcontractor":        subcontractor,
         "crew_margin_chart":    crew_margin_chart,
-        "monthly_revenue_chart": monthly_revenue_chart,
+        "projected_revenue_chart": projected_revenue_chart,
+        "projected_revenue":    projected_revenue,
+        "days_in_month":        days_in_month,
+        "day_of_month":         day_of_month,
         "weekly_jobs_chart":    weekly_jobs_chart,
         "weeks":                weeks,
         "total_estimated_hours": round(total_estimated_hours, 1),

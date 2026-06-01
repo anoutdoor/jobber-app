@@ -396,7 +396,7 @@
 
   <!-- Crew Leaderboard -->
   <div class="section-title">Crew Leaderboard</div>
-  {% set crew_colors = {"Ernesto": "#8b5cf6", "Jovani": "#3b82f6", "Jorge": "#f59e0b", "Other": "#555e71"} %}
+  {% set crew_colors = {"Ernesto": "#8b5cf6", "Jovani": "#3b82f6", "Jorge": "#f59e0b", "Brock": "#ec4899", "Other": "#555e71"} %}
   {% set best_margin = [] %}
   {% for crew in data.crews %}{% set s = data.crew_stats[crew] %}{% if s.avg_gross_margin is not none %}{% if not best_margin or s.avg_gross_margin > best_margin[0] %}{% if best_margin.append(s.avg_gross_margin) or best_margin.__delitem__(0) is none %}{% endif %}{% elif best_margin %}{% endif %}{% endif %}{% endfor %}
   <div class="row g-3">
@@ -431,8 +431,13 @@
           </div>
           <div class="col-12">
             <div class="crew-stat">
+              {% if crew == "Brock" %}
+              <div class="crew-stat-label">Paid to Brock</div>
+              <div class="crew-stat-value sm">${{ "{:,.0f}".format(s.paid) }}</div>
+              {% else %}
               <div class="crew-stat-label">Avg Rev / Visit Day</div>
               <div class="crew-stat-value sm">{% if s.avg_rev_per_day is not none %}${{ "{:,.0f}".format(s.avg_rev_per_day) }}{% else %}—{% endif %}</div>
+              {% endif %}
             </div>
           </div>
         </div>
@@ -451,69 +456,6 @@
     </div>
     {% endfor %}
   </div>
-
-  <!-- Subcontractor (Brock) -->
-  {% if data.subcontractor.jobs > 0 %}
-  {% set sub = data.subcontractor %}
-  <div class="section-title">Subcontractor (Brock)</div>
-  <div class="row g-3">
-    <div class="col-6 col-xl-3">
-      <div class="metric-card">
-        <div class="metric-label">Jobs</div>
-        <div class="metric-value">{{ sub.jobs }}</div>
-        <div class="metric-sub">Tagged subcontractor jobs</div>
-        <div class="accent-bar" style="background:var(--purple)"></div>
-      </div>
-    </div>
-    <div class="col-6 col-xl-3">
-      <div class="metric-card">
-        <div class="metric-label">Revenue</div>
-        <div class="metric-value">${{ "{:,.0f}".format(sub.revenue) }}</div>
-        <div class="metric-sub">Total billed</div>
-        <div class="accent-bar" style="background:var(--blue)"></div>
-      </div>
-    </div>
-    <div class="col-6 col-xl-3">
-      <div class="metric-card">
-        <div class="metric-label">Paid to Brock</div>
-        <div class="metric-value">${{ "{:,.0f}".format(sub.paid) }}</div>
-        <div class="metric-sub">From Jobber expenses</div>
-        <div class="accent-bar" style="background:var(--amber)"></div>
-      </div>
-    </div>
-    <div class="col-6 col-xl-3">
-      <div class="metric-card">
-        <div class="metric-label">A&amp;N Profit</div>
-        <div class="metric-value {% if sub.profit >= 0 %}green{% else %}red{% endif %}">${{ "{:,.0f}".format(sub.profit) }}</div>
-        <div class="metric-sub">{% if sub.margin is not none %}{{ sub.margin }}% margin{% else %}no revenue{% endif %}</div>
-        <div class="accent-bar" style="background:{% if sub.profit >= 0 %}var(--green){% else %}var(--red){% endif %}"></div>
-      </div>
-    </div>
-  </div>
-  <div class="jobs-table-wrap mt-3">
-    <div class="table-responsive">
-      <table class="table table-hover mb-0">
-        <thead><tr>
-          <th>Date</th><th>Client</th><th>Job</th><th>Revenue</th>
-          <th>Paid to Brock</th><th>A&amp;N Profit</th><th>Margin</th>
-        </tr></thead>
-        <tbody>
-          {% for job in sub.job_list %}
-          <tr>
-            <td style="white-space:nowrap;color:var(--text-muted)">{{ job.close_date_str }}</td>
-            <td style="font-weight:600;color:var(--text-primary)">{{ job.client }}</td>
-            <td style="color:var(--text-secondary)">{{ job.job_title }}</td>
-            <td style="font-weight:700;color:var(--text-primary)">${{ "{:,.0f}".format(job.revenue) }}</td>
-            <td>${{ "{:,.0f}".format(job.materials_cost) }}</td>
-            <td><span class="{% if job.gross_profit >= 0 %}val-positive{% else %}val-negative{% endif %}">${{ "{:,.0f}".format(job.gross_profit) }}</span></td>
-            <td>{% if job.gross_margin_pct is not none %}<span class="pill {% if job.gross_margin_pct >= 45 %}pill-green{% else %}pill-red{% endif %}">{{ job.gross_margin_pct }}%</span>{% else %}<span class="val-muted">n/a</span>{% endif %}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
-  {% endif %}
 
   <!-- Week by Week -->
   <div class="section-title">Week by Week</div>
@@ -586,8 +528,12 @@
     </div>
     <div class="col-12 col-lg-7">
       <div class="chart-card">
-        <div class="chart-title">Monthly Revenue — Last 6 Months</div>
-        <canvas id="revenueChart" height="200"></canvas>
+        <div class="chart-title">Projected Revenue ({{ data.month_label }})</div>
+        <canvas id="projectedRevenueChart" height="200"></canvas>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:10px;text-align:center">
+          ${{ "{:,.0f}".format(data.month_revenue) }} so far, on pace for ${{ "{:,.0f}".format(data.projected_revenue) }}
+          (day {{ data.day_of_month }} of {{ data.days_in_month }})
+        </div>
       </div>
     </div>
   </div>
@@ -666,15 +612,14 @@
     }
   });
 
-  new Chart(document.getElementById('revenueChart'), {
-    type: 'line',
+  new Chart(document.getElementById('projectedRevenueChart'), {
+    type: 'bar',
     data: {
-      labels: {{ data.monthly_revenue_chart.labels | tojson }},
+      labels: {{ data.projected_revenue_chart.labels | tojson }},
       datasets: [{
-        data: {{ data.monthly_revenue_chart.data | tojson }},
-        borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,.08)',
-        borderWidth: 2.5, pointBackgroundColor: '#3b82f6',
-        pointRadius: 4, pointHoverRadius: 6, fill: true, tension: 0.4,
+        data: {{ data.projected_revenue_chart.data | tojson }},
+        backgroundColor: ['#3b82f6', 'rgba(59,130,246,.3)'],
+        borderRadius: 6, borderSkipped: false, barThickness: 80,
       }]
     },
     options: {
@@ -682,7 +627,7 @@
       plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ` $${c.parsed.y.toLocaleString()}` } } },
       scales: {
         y: { beginAtZero: true, grid: { color: gridColor }, ticks: { callback: v => '$'+(v>=1000?(v/1000).toFixed(0)+'k':v), font: { size: 11 } } },
-        x: { grid: { display: false }, ticks: { font: { size: 11 } } },
+        x: { grid: { display: false }, ticks: { font: { size: 12, weight: 600 } } },
       },
     }
   });
