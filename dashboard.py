@@ -13,8 +13,9 @@ CENTRAL_TZ = pytz.timezone("America/Chicago")
 MONTHLY_OVERHEAD = 35192.83   # total monthly company overhead; month-level net only, never per job
 
 # Fresh-start cutoff: the dashboard only shows jobs completed on/after this date
-# (matches jobber_sync.SYNC_START_DATE). Anything older is ignored.
-DASHBOARD_START_DATE = date(2026, 5, 25)
+# (matches jobber_sync.SYNC_START_DATE). Anything older is ignored. Reset to a
+# clean June 2026 start on 2026-06-01.
+DASHBOARD_START_DATE = date(2026, 6, 1)
 
 
 def safe_float(val, default=0.0):

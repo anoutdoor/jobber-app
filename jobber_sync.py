@@ -79,15 +79,17 @@ SUBCONTRACTOR_LEADS = [
     {"name": "Brock Bandolik", "crew_label": "Brock"},
 ]
 
-# Fresh-start cutoff: ignore everything completed before this date. The sheet
-# was wiped of older/duplicated rows on 2026-05-31; this keeps old jobs from
-# syncing back in. Format: YYYY-MM-DD.
-SYNC_START_DATE = "2026-05-25"
+# Fresh-start cutoff: ignore everything completed before this date. Reset to a
+# clean June 2026 start on 2026-06-01 (May data was full of dupes/edge cases and
+# the Jobs sheet was cleared by hand). This keeps old jobs from syncing back in.
+# Format: YYYY-MM-DD.
+SYNC_START_DATE = "2026-06-01"
 
 # Specific older jobs we still want on the dashboard despite the cutoff above.
 # Matched by exact Jobber Job # (not client name, so we don't drag in every
-# job for that client). Keep this list small and deliberate.
-CUTOFF_EXEMPT_JOB_NUMBERS = {"1753"}  # James Cory, the one pre-cutoff job we want
+# job for that client). Keep this list small and deliberate. Empty as of the
+# June reset (the old James Cory #1753 exemption was dropped).
+CUTOFF_EXEMPT_JOB_NUMBERS = set()
 
 
 def is_cutoff_exempt(job_number):
