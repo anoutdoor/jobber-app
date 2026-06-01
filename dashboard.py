@@ -74,6 +74,7 @@ def parse_jobs(raw):
             "rev_per_visit_day": safe_float(job.get("Revenue / Visit Day ($)", 0)),
             "labor_hours":      safe_float(job.get("Labor Hours", 0)),
             "estimated_hours":  str(job.get("Estimated Hours", "")),
+            "subcontractor":    str(job.get("Subcontractor", "")).strip(),
         })
 
     parsed.sort(key=lambda x: x["close_date"], reverse=True)
@@ -136,6 +137,25 @@ def compute_dashboard():
             "avg_gross_margin": round(sum(cgm) / len(cgm), 1) if cgm else None,
             "avg_rev_per_day":  round(sum(rpd) / len(rpd), 2) if rpd else None,
         }
+
+    # ── Subcontractor spot (Brock) ───────────────────────────────────────────
+    # Any job the user tagged in the sheet's "Subcontractor" column. Pay comes
+    # from the Jobber expense logged on the job (maps to materials_cost), so the
+    # math here matches the rest of the dashboard. Covers the full window, not
+    # just the current month, since sub jobs are sparse.
+    sub_jobs = [j for j in jobs if j.get("subcontractor")]
+    sub_revenue = round(sum(j["revenue"] for j in sub_jobs), 2)
+    sub_paid    = round(sum(j["materials_cost"] for j in sub_jobs), 2)
+    sub_profit  = round(sum(j["gross_profit"] for j in sub_jobs), 2)
+    sub_margin  = round(sub_profit / sub_revenue * 100, 1) if sub_revenue else None
+    subcontractor = {
+        "jobs":     len(sub_jobs),
+        "revenue":  sub_revenue,
+        "paid":     sub_paid,
+        "profit":   sub_profit,
+        "margin":   sub_margin,
+        "job_list": sorted(sub_jobs, key=lambda j: j["close_date"], reverse=True),
+    }
 
     # ── Chart: gross margin by crew ──────────────────────────────────────────
     crew_margin_chart = {
@@ -215,6 +235,7 @@ def compute_dashboard():
         "monthly_overhead":     MONTHLY_OVERHEAD,
         "crew_stats":           crew_stats,
         "crews":                CREWS,
+        "subcontractor":        subcontractor,
         "crew_margin_chart":    crew_margin_chart,
         "monthly_revenue_chart": monthly_revenue_chart,
         "weekly_jobs_chart":    weekly_jobs_chart,

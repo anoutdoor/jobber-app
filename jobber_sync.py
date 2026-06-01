@@ -520,7 +520,10 @@ def ensure_sheets(spreadsheet):
         logger.info("Created 'Jobs' tab.")
     else:
         ws = spreadsheet.worksheet("Jobs")
-        if ws.row_values(1) != JOBS_HEADERS:
+        # Compare only the synced columns so a manual trailing column (e.g.
+        # "Subcontractor") doesn't trigger a header rewrite every sync.
+        current = ws.row_values(1)
+        if current[:len(JOBS_HEADERS)] != JOBS_HEADERS:
             ws.update("A1", [JOBS_HEADERS])
             logger.info("Updated 'Jobs' tab headers.")
 

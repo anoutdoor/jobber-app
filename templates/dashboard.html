@@ -452,6 +452,69 @@
     {% endfor %}
   </div>
 
+  <!-- Subcontractor (Brock) -->
+  {% if data.subcontractor.jobs > 0 %}
+  {% set sub = data.subcontractor %}
+  <div class="section-title">Subcontractor (Brock)</div>
+  <div class="row g-3">
+    <div class="col-6 col-xl-3">
+      <div class="metric-card">
+        <div class="metric-label">Jobs</div>
+        <div class="metric-value">{{ sub.jobs }}</div>
+        <div class="metric-sub">Tagged subcontractor jobs</div>
+        <div class="accent-bar" style="background:var(--purple)"></div>
+      </div>
+    </div>
+    <div class="col-6 col-xl-3">
+      <div class="metric-card">
+        <div class="metric-label">Revenue</div>
+        <div class="metric-value">${{ "{:,.0f}".format(sub.revenue) }}</div>
+        <div class="metric-sub">Total billed</div>
+        <div class="accent-bar" style="background:var(--blue)"></div>
+      </div>
+    </div>
+    <div class="col-6 col-xl-3">
+      <div class="metric-card">
+        <div class="metric-label">Paid to Brock</div>
+        <div class="metric-value">${{ "{:,.0f}".format(sub.paid) }}</div>
+        <div class="metric-sub">From Jobber expenses</div>
+        <div class="accent-bar" style="background:var(--amber)"></div>
+      </div>
+    </div>
+    <div class="col-6 col-xl-3">
+      <div class="metric-card">
+        <div class="metric-label">A&amp;N Profit</div>
+        <div class="metric-value {% if sub.profit >= 0 %}green{% else %}red{% endif %}">${{ "{:,.0f}".format(sub.profit) }}</div>
+        <div class="metric-sub">{% if sub.margin is not none %}{{ sub.margin }}% margin{% else %}no revenue{% endif %}</div>
+        <div class="accent-bar" style="background:{% if sub.profit >= 0 %}var(--green){% else %}var(--red){% endif %}"></div>
+      </div>
+    </div>
+  </div>
+  <div class="jobs-table-wrap mt-3">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead><tr>
+          <th>Date</th><th>Client</th><th>Job</th><th>Revenue</th>
+          <th>Paid to Brock</th><th>A&amp;N Profit</th><th>Margin</th>
+        </tr></thead>
+        <tbody>
+          {% for job in sub.job_list %}
+          <tr>
+            <td style="white-space:nowrap;color:var(--text-muted)">{{ job.close_date_str }}</td>
+            <td style="font-weight:600;color:var(--text-primary)">{{ job.client }}</td>
+            <td style="color:var(--text-secondary)">{{ job.job_title }}</td>
+            <td style="font-weight:700;color:var(--text-primary)">${{ "{:,.0f}".format(job.revenue) }}</td>
+            <td>${{ "{:,.0f}".format(job.materials_cost) }}</td>
+            <td><span class="{% if job.gross_profit >= 0 %}val-positive{% else %}val-negative{% endif %}">${{ "{:,.0f}".format(job.gross_profit) }}</span></td>
+            <td>{% if job.gross_margin_pct is not none %}<span class="pill {% if job.gross_margin_pct >= 45 %}pill-green{% else %}pill-red{% endif %}">{{ job.gross_margin_pct }}%</span>{% else %}<span class="val-muted">n/a</span>{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
   <!-- Week by Week -->
   <div class="section-title">Week by Week</div>
   {% for week in data.weeks %}
