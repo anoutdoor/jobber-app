@@ -71,6 +71,14 @@ CREW_LEADS = [
 # Install crews shown on the job-costing dashboard (Mow gets its own later)
 INSTALL_CREWS = {"Ernesto", "Jovani", "Jorge"}
 
+# Subcontractors are ASSIGNED to a job in Jobber but never clock in, so they
+# never show up in timeSheetEntries. We detect them from the job's assignedUsers
+# instead and treat each as its own crew. Names must match Jobber's user
+# name.full (matched case-insensitively, whitespace collapsed).
+SUBCONTRACTOR_LEADS = [
+    {"name": "Brock Bandolik", "crew_label": "Brock"},
+]
+
 # Fresh-start cutoff: ignore everything completed before this date. The sheet
 # was wiped of older/duplicated rows on 2026-05-31; this keeps old jobs from
 # syncing back in. Format: YYYY-MM-DD.
@@ -117,6 +125,13 @@ query GetClosedJobs($cursor: String) {
       visits(first: 10) {
         nodes {
           startAt
+          assignedUsers(first: 20) {
+            nodes {
+              name {
+                full
+              }
+            }
+          }
         }
       }
       customFields {
@@ -342,13 +357,23 @@ def fetch_all_closed_jobs():
 # Costing logic
 # ---------------------------------------------------------------------------
 
-def resolve_crew(worked_names):
+def _norm_name(name):
+    return " ".join((name or "").split()).lower()
+
+
+def resolve_crew(worked_names, assigned_names=None):
     # Jobber's name.full sometimes carries trailing whitespace (e.g.
     # "Gonzalo Cardenas "), so compare against a stripped set.
     stripped = {n.strip() for n in worked_names}
     for lead in CREW_LEADS:
         if lead["name"] in stripped:
             return lead["crew_label"]
+    # Subcontractors don't clock time, so a clocked-in lead always wins above.
+    # Only if nobody recognized clocked in do we fall back to the assigned crew.
+    assigned = {_norm_name(n) for n in (assigned_names or [])}
+    for sub in SUBCONTRACTOR_LEADS:
+        if _norm_name(sub["name"]) in assigned:
+            return sub["crew_label"]
     return "Other"
 
 
@@ -379,10 +404,27 @@ def cost_job(job):
     timesheet_nodes = (job.get("timeSheetEntries") or {}).get("nodes", [])
     worked_names = list({((n.get("user") or {}).get("name") or {}).get("full", "") for n in timesheet_nodes if ((n.get("user") or {}).get("name") or {}).get("full")})
 
-    crew_label = resolve_crew(worked_names)
+    # Assigned crew (used to catch subcontractors like Brock, who are assigned
+    # but never clock in so they're absent from timeSheetEntries). In Jobber the
+    # assignment lives on each Visit, not the Job, so gather assigned names
+    # across all of the job's visits.
+    visit_nodes = (job.get("visits") or {}).get("nodes", [])
+    assigned_names = list({
+        (u.get("name") or {}).get("full", "")
+        for v in visit_nodes
+        for u in ((v.get("assignedUsers") or {}).get("nodes", []))
+        if (u.get("name") or {}).get("full")
+    })
+
+    crew_label = resolve_crew(worked_names, assigned_names)
+
+    # Team Members shows clock-in names; if nobody clocked (a subcontractor job)
+    # fall back to the matched subcontractor so the row isn't blank.
+    matched_subs = [s["name"] for s in SUBCONTRACTOR_LEADS
+                    if _norm_name(s["name"]) in {_norm_name(n) for n in assigned_names}]
+    worked_names = worked_names or matched_subs
     team_count = len(worked_names) or 1
 
-    visit_nodes = (job.get("visits") or {}).get("nodes", [])
     visit_day_count, visit_dates = count_visit_days(visit_nodes)
 
     # All cost and revenue figures come from Jobber's built-in jobCosting object
