@@ -95,6 +95,16 @@ CUTOFF_EXEMPT_JOB_NUMBERS = set()
 def is_cutoff_exempt(job_number):
     return str(job_number or "").strip() in CUTOFF_EXEMPT_JOB_NUMBERS
 
+
+# Specific jobs to ALWAYS exclude, even when they pass the cutoff. Use this for
+# jobs that were closed in Jobber by mistake, so their bad numbers don't pollute
+# the dashboard. Matched by exact Jobber Job #. Keep small and deliberate.
+EXCLUDED_JOB_NUMBERS = {"1871"}  # Walter Lubawy, marked closed on 6/1 by mistake
+
+
+def is_excluded(job_number):
+    return str(job_number or "").strip() in EXCLUDED_JOB_NUMBERS
+
 # ---------------------------------------------------------------------------
 # GraphQL query — labor cost pulled directly from Jobber
 # ---------------------------------------------------------------------------
@@ -697,8 +707,9 @@ def run_sync():
 
     jobs = [
         j for j in jobs
-        if utc_iso_to_central_date(j.get("completedAt")) >= SYNC_START_DATE
-        or is_cutoff_exempt(j.get("jobNumber"))
+        if (utc_iso_to_central_date(j.get("completedAt")) >= SYNC_START_DATE
+            or is_cutoff_exempt(j.get("jobNumber")))
+        and not is_excluded(j.get("jobNumber"))
     ]
     logger.info(f"After fresh-start cutoff ({SYNC_START_DATE}): {len(jobs)}")
 

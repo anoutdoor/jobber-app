@@ -4,7 +4,7 @@ from collections import defaultdict
 
 import pytz
 
-from jobber_sync import get_sheets_client, SHEET_ID, is_cutoff_exempt, JOBS_HEADERS
+from jobber_sync import get_sheets_client, SHEET_ID, is_cutoff_exempt, is_excluded, JOBS_HEADERS
 
 # Business runs on Central time; Railway runs in UTC, so "today" must be Central
 # or the whole month/week view flips a day early every evening.
@@ -84,6 +84,11 @@ def parse_jobs(raw):
             continue
 
         if close_date < DASHBOARD_START_DATE and not is_cutoff_exempt(job.get("Job #", "")):
+            continue
+
+        # Jobs closed in Jobber by mistake: hide them even if a stale row is
+        # still sitting in the sheet from a prior sync.
+        if is_excluded(job.get("Job #", "")):
             continue
 
         def pending_or_float(key):
