@@ -14,6 +14,8 @@ Tabs written (created if missing, fully overwritten each run):
                        into two rows; visits, avg/fastest/slowest minutes)
   - "Mow by Day"     : per-day rollup (properties mowed, mow vs travel time, span)
   - "Mow Travel"     : season totals + per-day mow-vs-travel-time breakdown
+  - "Mow Standards"  : per-property "should take" target (avg of 3 fastest clean
+                       mows) vs typical, + per-day route totals and the slack
 
 Travel time is the between-mow time only: General (no-job) time before the
 first mow (yard/arrival) and after the last mow (drive back) is excluded.
@@ -39,7 +41,7 @@ import os
 import json
 import time
 import statistics
-from collections import defaultdict
+from collections import defaultdict, Counter
 from datetime import datetime, timezone
 
 import requests
@@ -69,8 +71,11 @@ DETAIL_TAB = "Mow Detail"
 PROPERTY_TAB = "Mow by Property"
 DAY_TAB = "Mow by Day"
 TRAVEL_TAB = "Mow Travel"
+STANDARDS_TAB = "Mow Standards"
 # Earlier builds wrote a per-client tab; it's replaced by the per-property tab.
 STALE_TABS = ["Mow by Client"]
+
+DOW_ORDER = {"Mon": 0, "Tue": 1, "Wed": 2, "Thu": 3, "Fri": 4, "Sat": 5, "Sun": 6}
 
 
 # ---------------------------------------------------------------------------
@@ -521,6 +526,89 @@ def build_by_property(prop_visits, prop_info, excl_count=None):
     return rows
 
 
+def compute_standards(detail):
+    """Per-property speed standards. 'Target' = a property's *proven good pace*
+    (average of its 3 fastest clean mows), which beats the median because the
+    median bakes in truck-sitting and dawdle. Uses clean visits only (short/long
+    flagged visits excluded). Returns (props, day_rollup)."""
+    excluded = {(r["job_number"], r["date"]) for r in detail
+                if r["flag_kind"] in ("short", "long")}
+    visit_total = defaultdict(float)
+    visit_day = {}
+    meta = {}
+    for r in detail:
+        meta.setdefault(r["job_number"], (r["client"], r["property"]))
+        if r["minutes"] == "":
+            continue
+        key = (r["job_number"], r["date"])
+        if key in excluded:
+            continue
+        visit_total[key] += r["minutes"]
+        visit_day[key] = r["dow"]
+
+    prop_times = defaultdict(list)
+    prop_days = defaultdict(Counter)
+    for (jn, date), t in visit_total.items():
+        prop_times[jn].append(t)
+        prop_days[jn][visit_day[(jn, date)]] += 1
+
+    props = []
+    for jn, ts in prop_times.items():
+        if not ts:
+            continue
+        s = sorted(ts)
+        target = statistics.mean(s[:3]) if len(s) >= 3 else statistics.mean(s)
+        med = statistics.median(ts)
+        client, prop = meta.get(jn, ("", ""))
+        usual = prop_days[jn].most_common(1)[0][0] if prop_days[jn] else ""
+        props.append({"client": client, "prop": prop, "n": len(ts),
+                      "typical": med, "target": target, "best": min(ts),
+                      "slack": med - target, "day": usual})
+
+    day_rollup = defaultdict(lambda: {"n": 0, "typ": 0.0, "tgt": 0.0})
+    for p in props:
+        d = day_rollup[p["day"]]
+        d["n"] += 1
+        d["typ"] += p["typical"]
+        d["tgt"] += p["target"]
+    return props, day_rollup
+
+
+def build_standards(props, day_rollup):
+    """Returns (rows, bold_row_indices). Two stacked sections: per-day route
+    totals, then per-property targets sorted by usual day then biggest slack."""
+    rows, bold = [], []
+    bold.append(len(rows))
+    rows.append(["ROUTE TOTALS (mow time only — travel & yard are separate)",
+                 "", "", "", "", "", "", ""])
+    bold.append(len(rows))
+    rows.append(["Usual Day", "# Props", "Typical (h)", "Target (h)",
+                 "Slack (h)", "", "", ""])
+    tot_n = tot_typ = tot_tgt = 0
+    for d in ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]:
+        if d not in day_rollup:
+            continue
+        x = day_rollup[d]
+        tot_n += x["n"]; tot_typ += x["typ"]; tot_tgt += x["tgt"]
+        rows.append([d, x["n"], round(x["typ"] / 60, 1), round(x["tgt"] / 60, 1),
+                     round((x["typ"] - x["tgt"]) / 60, 1), "", "", ""])
+    rows.append(["All days", tot_n, round(tot_typ / 60, 1), round(tot_tgt / 60, 1),
+                 round((tot_typ - tot_tgt) / 60, 1), "", "", ""])
+
+    rows.append(["", "", "", "", "", "", "", ""])
+    bold.append(len(rows))
+    rows.append(["PER PROPERTY — Target = average of the 3 fastest clean mows "
+                 "(a pace they've already proven)", "", "", "", "", "", "", ""])
+    bold.append(len(rows))
+    rows.append(["Usual Day", "Client", "Property", "# Mows", "Typical Min",
+                 "Target Min", "Best Min", "Slack Min"])
+    for p in sorted(props, key=lambda p: (DOW_ORDER.get(p["day"], 9), -p["slack"])):
+        rows.append([p["day"], p["client"], p["prop"], p["n"],
+                     round(p["typical"], 1), round(p["target"], 1),
+                     round(p["best"], 1), round(p["slack"], 1)])
+    return rows, bold
+
+
 def build_by_day(day_agg):
     # Yard Time = clock-in to first mow (loading, fueling, drive to first stop).
     # Read it with Clock In + First Mow: a long yard time with an early clock-in
@@ -656,6 +744,17 @@ def highlight_detail(gacc, sid, detail, ncols=11):
     return counts
 
 
+def bold_rows(gacc, sid, indices, ncols=8):
+    """Bold a set of (0-indexed) rows — for tabs with multiple header rows."""
+    reqs = [{"repeatCell": {
+        "range": {"sheetId": sid, "startRowIndex": i, "endRowIndex": i + 1,
+                  "startColumnIndex": 0, "endColumnIndex": ncols},
+        "cell": {"userEnteredFormat": {"textFormat": {"bold": True}}},
+        "fields": "userEnteredFormat.textFormat.bold",
+    }} for i in indices]
+    sheets_post(gacc, ":batchUpdate", {"requests": reqs})
+
+
 def format_header(gacc, sid, freeze_rows=1, bold_row=0):
     """Bold a header row and freeze the top row for readability."""
     sheets_post(gacc, ":batchUpdate", {"requests": [
@@ -687,6 +786,7 @@ def main():
     detail, prop_visits, prop_info, day_agg = process(entries)
     compute_flags(detail)
     clean_prop_visits, excl_count, n_excluded = apply_exclusions(detail, day_agg)
+    std_rows, std_bold = build_standards(*compute_standards(detail))
     print(f"[{len(detail)} mow segments, {len(prop_visits)} properties, "
           f"{len(day_agg)} mow days | {n_excluded} outlier visits excluded "
           f"from summaries]")
@@ -696,6 +796,7 @@ def main():
         PROPERTY_TAB: build_by_property(clean_prop_visits, prop_info, excl_count),
         DAY_TAB: build_by_day(day_agg),
         TRAVEL_TAB: build_travel(day_agg),
+        STANDARDS_TAB: std_rows,
     }
 
     existing = get_sheet_ids(gacc)
@@ -708,6 +809,8 @@ def main():
         # Travel tab has its header on row 7 (after the totals block).
         if title == TRAVEL_TAB:
             format_header(gacc, sid, freeze_rows=0, bold_row=6)
+        elif title == STANDARDS_TAB:
+            bold_rows(gacc, sid, std_bold)
         else:
             format_header(gacc, sid, freeze_rows=1, bold_row=0)
         if title == DETAIL_TAB:
