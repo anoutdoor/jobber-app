@@ -3,6 +3,7 @@ import json
 import logging
 from datetime import datetime
 
+import pytz
 import requests
 from dotenv import load_dotenv
 import gspread
@@ -13,6 +14,28 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 load_dotenv()
 
 logger = logging.getLogger(__name__)
+
+# The business runs on Central time. Jobber returns UTC timestamps, and Railway
+# runs in UTC, so dates must be converted to Central or evening jobs roll into
+# the next day (e.g. 7pm CDT on the 31st reads as the 1st in UTC).
+CENTRAL_TZ = pytz.timezone("America/Chicago")
+
+
+def utc_iso_to_central_date(iso_str):
+    """Convert a Jobber UTC ISO8601 timestamp to its America/Chicago date (YYYY-MM-DD)."""
+    if not iso_str:
+        return ""
+    s = iso_str.strip()
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(s)
+    except ValueError:
+        return iso_str[:10]
+    if dt.tzinfo is None:
+        dt = pytz.utc.localize(dt)
+    return dt.astimezone(CENTRAL_TZ).date().isoformat()
+
 
 GRAPHQL_URL = "https://api.getjobber.com/api/graphql"
 GRAPHQL_VERSION = "2026-03-10"
@@ -31,23 +54,63 @@ GOOGLE_CLIENT_SECRETS_FILE = os.getenv("GOOGLE_CLIENT_SECRETS_FILE", "client_sec
 SHEET_ID = os.getenv("GOOGLE_SHEET_ID")
 
 # ---------------------------------------------------------------------------
-# Crew config — priority order matters (first match wins)
+# Crew config — lead-based assignment, priority order matters (first match wins)
+# A job's crew = whichever LEAD clocked into it (from timeSheetEntries names).
+# Lead names MUST match Jobber's user name.full EXACTLY — verify against the
+# Jobs sheet's Team Members column if jobs land in "Other".
 # ---------------------------------------------------------------------------
-CREW_CONFIG = [
-    {"name": "Ernesto Cardenas", "crew_label": "Ernesto", "daily_overhead": 346},
-    {"name": "Arturo L Marin",   "crew_label": "Arturo",  "daily_overhead": 295},
-    {"name": "Gonzalo Feroz",    "crew_label": "Gonzalo", "daily_overhead": 252},
+CREW_LEADS = [
+    {"name": "Ernesto Cardenas",         "crew_label": "Ernesto"},
+    {"name": "Jovanni Garduno Martinez", "crew_label": "Jovani"},
+    {"name": "Gonzalo Cardenas",         "crew_label": "Mow"},
+    # Jorge is LAST on purpose: he flexes to drive for Jovani, so when both
+    # clocked in, the job is Jovani's.
+    {"name": "Jorge Armenta",            "crew_label": "Jorge"},
 ]
 
-# Crews that split daily overhead proportionally across multiple jobs per day
-PROPORTIONAL_OVERHEAD_CREWS = {"Arturo", "Gonzalo"}
+# Install crews shown on the job-costing dashboard (Mow gets its own later)
+INSTALL_CREWS = {"Ernesto", "Jovani", "Jorge"}
+
+# Subcontractors are ASSIGNED to a job in Jobber but never clock in, so they
+# never show up in timeSheetEntries. We detect them from the job's assignedUsers
+# instead and treat each as its own crew. Names must match Jobber's user
+# name.full (matched case-insensitively, whitespace collapsed).
+SUBCONTRACTOR_LEADS = [
+    {"name": "Brock Bandolik", "crew_label": "Brock"},
+]
+
+# Fresh-start cutoff: ignore everything completed before this date. Reset to a
+# clean June 2026 start on 2026-06-01 (May data was full of dupes/edge cases and
+# the Jobs sheet was cleared by hand). This keeps old jobs from syncing back in.
+# Format: YYYY-MM-DD.
+SYNC_START_DATE = "2026-06-01"
+
+# Specific older jobs we still want on the dashboard despite the cutoff above.
+# Matched by exact Jobber Job # (not client name, so we don't drag in every
+# job for that client). Keep this list small and deliberate. Empty as of the
+# June reset (the old James Cory #1753 exemption was dropped).
+CUTOFF_EXEMPT_JOB_NUMBERS = set()
+
+
+def is_cutoff_exempt(job_number):
+    return str(job_number or "").strip() in CUTOFF_EXEMPT_JOB_NUMBERS
+
+
+# Specific jobs to ALWAYS exclude, even when they pass the cutoff. Use this for
+# jobs that were closed in Jobber by mistake, so their bad numbers don't pollute
+# the dashboard. Matched by exact Jobber Job #. Keep small and deliberate.
+EXCLUDED_JOB_NUMBERS = {"1871"}  # Walter Lubawy, marked closed on 6/1 by mistake
+
+
+def is_excluded(job_number):
+    return str(job_number or "").strip() in EXCLUDED_JOB_NUMBERS
 
 # ---------------------------------------------------------------------------
 # GraphQL query — labor cost pulled directly from Jobber
 # ---------------------------------------------------------------------------
 JOBS_QUERY = """
 query GetClosedJobs($cursor: String) {
-  jobs(filter: { status: requires_invoicing }, first: 10, after: $cursor) {
+  jobs(filter: { status: __STATUS__ }, first: 10, after: $cursor) {
     nodes {
       id
       title
@@ -74,6 +137,13 @@ query GetClosedJobs($cursor: String) {
       visits(first: 10) {
         nodes {
           startAt
+          assignedUsers(first: 20) {
+            nodes {
+              name {
+                full
+              }
+            }
+          }
         }
       }
       customFields {
@@ -259,41 +329,64 @@ def graphql_request(query, variables=None, access_token=None, _retry=True):
     return body
 
 
+# Statuses that represent a finished job. requires_invoicing catches jobs that
+# are done but not yet invoiced; archived catches jobs that have been invoiced
+# and closed out. Without archived, a job leaves requires_invoicing the moment
+# it's invoiced, so the sync could never pull a post-invoice edit to its total.
+CLOSED_JOB_STATUSES = ["requires_invoicing", "archived"]
+
+
 def fetch_all_closed_jobs():
-    jobs = []
-    cursor = None
+    by_id = {}
 
-    while True:
-        data = graphql_request(JOBS_QUERY, {"cursor": cursor})
-        if not data:
-            break
+    for status in CLOSED_JOB_STATUSES:
+        query = JOBS_QUERY.replace("__STATUS__", status)
+        cursor = None
+        while True:
+            data = graphql_request(query, {"cursor": cursor})
+            if not data:
+                break
 
-        jobs_data = (data.get("data") or {}).get("jobs")
-        if not jobs_data:
-            logger.error(f"Unexpected GraphQL response shape: {json.dumps(data)[:500]}")
-            break
+            jobs_data = (data.get("data") or {}).get("jobs")
+            if not jobs_data:
+                logger.error(f"Unexpected GraphQL response shape ({status}): {json.dumps(data)[:500]}")
+                break
 
-        nodes = jobs_data.get("nodes", [])
-        jobs.extend(nodes)
-        logger.info(f"Fetched page of {len(nodes)} jobs (total so far: {len(jobs)})")
+            nodes = jobs_data.get("nodes", [])
+            for node in nodes:
+                by_id[node.get("id")] = node
+            logger.info(f"[{status}] page of {len(nodes)} jobs (unique so far: {len(by_id)})")
 
-        page_info = jobs_data.get("pageInfo", {})
-        if not page_info.get("hasNextPage"):
-            break
-        cursor = page_info.get("endCursor")
+            page_info = jobs_data.get("pageInfo", {})
+            if not page_info.get("hasNextPage"):
+                break
+            cursor = page_info.get("endCursor")
 
-    return jobs
+    return list(by_id.values())
 
 
 # ---------------------------------------------------------------------------
 # Costing logic
 # ---------------------------------------------------------------------------
 
-def resolve_crew(assigned_names):
-    for config in CREW_CONFIG:
-        if config["name"] in assigned_names:
-            return config["crew_label"], config["daily_overhead"]
-    return "Other", 0
+def _norm_name(name):
+    return " ".join((name or "").split()).lower()
+
+
+def resolve_crew(worked_names, assigned_names=None):
+    # Jobber's name.full sometimes carries trailing whitespace (e.g.
+    # "Gonzalo Cardenas "), so compare against a stripped set.
+    stripped = {n.strip() for n in worked_names}
+    for lead in CREW_LEADS:
+        if lead["name"] in stripped:
+            return lead["crew_label"]
+    # Subcontractors don't clock time, so a clocked-in lead always wins above.
+    # Only if nobody recognized clocked in do we fall back to the assigned crew.
+    assigned = {_norm_name(n) for n in (assigned_names or [])}
+    for sub in SUBCONTRACTOR_LEADS:
+        if _norm_name(sub["name"]) in assigned:
+            return sub["crew_label"]
+    return "Other"
 
 
 def count_visit_days(visits):
@@ -323,10 +416,27 @@ def cost_job(job):
     timesheet_nodes = (job.get("timeSheetEntries") or {}).get("nodes", [])
     worked_names = list({((n.get("user") or {}).get("name") or {}).get("full", "") for n in timesheet_nodes if ((n.get("user") or {}).get("name") or {}).get("full")})
 
-    crew_label, daily_overhead_rate = resolve_crew(worked_names)
+    # Assigned crew (used to catch subcontractors like Brock, who are assigned
+    # but never clock in so they're absent from timeSheetEntries). In Jobber the
+    # assignment lives on each Visit, not the Job, so gather assigned names
+    # across all of the job's visits.
+    visit_nodes = (job.get("visits") or {}).get("nodes", [])
+    assigned_names = list({
+        (u.get("name") or {}).get("full", "")
+        for v in visit_nodes
+        for u in ((v.get("assignedUsers") or {}).get("nodes", []))
+        if (u.get("name") or {}).get("full")
+    })
+
+    crew_label = resolve_crew(worked_names, assigned_names)
+
+    # Team Members shows clock-in names; if nobody clocked (a subcontractor job)
+    # fall back to the matched subcontractor so the row isn't blank.
+    matched_subs = [s["name"] for s in SUBCONTRACTOR_LEADS
+                    if _norm_name(s["name"]) in {_norm_name(n) for n in assigned_names}]
+    worked_names = worked_names or matched_subs
     team_count = len(worked_names) or 1
 
-    visit_nodes = (job.get("visits") or {}).get("nodes", [])
     visit_day_count, visit_dates = count_visit_days(visit_nodes)
 
     # All cost and revenue figures come from Jobber's built-in jobCosting object
@@ -362,7 +472,7 @@ def cost_job(job):
         "job_title": job.get("title", ""),
         "client_name": (job.get("client") or {}).get("name", ""),
         "property_address": format_address((job.get("property") or {}).get("address")),
-        "close_date": (job.get("completedAt") or "")[:10],
+        "close_date": utc_iso_to_central_date(job.get("completedAt")),
         "crew": crew_label,
         "team_members": ", ".join(worked_names),
         "team_count": team_count,
@@ -380,30 +490,17 @@ def cost_job(job):
         "synced_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"),
     }
 
-    if crew_label in PROPORTIONAL_OVERHEAD_CREWS:
-        # Pass 1: defer overhead-dependent fields until 8pm reconciliation
-        base.update({
-            "daily_overhead_rate": "Pending",
-            "total_overhead": "Pending",
-            "total_job_cost": "Pending",
-            "net_profit": "Pending",
-            "net_margin_pct": "Pending",
-            "net_margin_flag": "Pending",
-        })
-    else:
-        # Ernesto: full daily overhead applied immediately
-        total_overhead = round(visit_day_count * daily_overhead_rate, 2)
-        total_job_cost = round(total_overhead + labor_cost + materials_cost, 2)
-        net_profit = round(invoice_total - total_job_cost, 2)
-        net_margin_pct = round(net_profit / invoice_total * 100, 2) if invoice_total else 0.0
-        base.update({
-            "daily_overhead_rate": daily_overhead_rate,
-            "total_overhead": total_overhead,
-            "total_job_cost": total_job_cost,
-            "net_profit": net_profit,
-            "net_margin_pct": net_margin_pct,
-            "net_margin_flag": "FLAG: BELOW 15%" if net_margin_pct < 15 else "",
-        })
+    # Overhead is no longer allocated per job. Net is reported month-level only
+    # (see dashboard.py MONTHLY_OVERHEAD). These columns stay blank to preserve
+    # the sheet layout without implying any per-job net.
+    base.update({
+        "daily_overhead_rate": "",
+        "total_overhead": "",
+        "total_job_cost": "",
+        "net_profit": "",
+        "net_margin_pct": "",
+        "net_margin_flag": "",
+    })
 
     return base
 
@@ -499,7 +596,10 @@ def ensure_sheets(spreadsheet):
         logger.info("Created 'Jobs' tab.")
     else:
         ws = spreadsheet.worksheet("Jobs")
-        if ws.row_values(1) != JOBS_HEADERS:
+        # Compare only the synced columns so a manual trailing column (e.g.
+        # "Subcontractor") doesn't trigger a header rewrite every sync.
+        current = ws.row_values(1)
+        if current[:len(JOBS_HEADERS)] != JOBS_HEADERS:
             ws.update("A1", [JOBS_HEADERS])
             logger.info("Updated 'Jobs' tab headers.")
 
@@ -572,108 +672,11 @@ def _col_to_letter(n):
 
 
 def reconcile_daily_overhead():
-    from collections import defaultdict
-    logger.info("=== Daily overhead reconciliation starting ===")
-
-    if not SHEET_ID:
-        return {"status": "error", "message": "GOOGLE_SHEET_ID not set"}
-
-    try:
-        gc = get_sheets_client()
-        spreadsheet = gc.open_by_key(SHEET_ID)
-        jobs_ws = spreadsheet.worksheet("Jobs")
-    except Exception as e:
-        logger.error(f"Sheets error in reconciliation: {e}")
-        return {"status": "error", "message": str(e)}
-
-    all_values = jobs_ws.get_all_values()
-    if len(all_values) < 2:
-        return {"status": "ok", "reconciled": 0, "message": "No data rows"}
-
-    headers = all_values[0]
-    col = {h: i for i, h in enumerate(headers)}
-
-    required = [
-        "Total Overhead ($)", "Crew", "Close Date", "Labor Hours", "Team Count",
-        "Daily Overhead Rate ($)", "Total Job Cost ($)", "Labor Cost ($)",
-        "Materials Cost ($)", "Invoice Total ($)", "Net Profit ($)",
-        "Net Margin %", "Net Margin Flag",
-    ]
-    missing = [f for f in required if f not in col]
-    if missing:
-        msg = f"Missing sheet columns: {missing}"
-        logger.error(msg)
-        return {"status": "error", "message": msg}
-
-    # Collect rows where overhead is still Pending
-    pending = []
-    for row_idx, row in enumerate(all_values[1:], start=2):
-        overhead_val = row[col["Total Overhead ($)"]] if len(row) > col["Total Overhead ($)"] else ""
-        if overhead_val == "Pending":
-            pending.append((row_idx, row))
-
-    if not pending:
-        logger.info("No pending rows to reconcile.")
-        return {"status": "ok", "reconciled": 0, "message": "No pending rows"}
-
-    # Group by (crew, close_date)
-    groups = defaultdict(list)
-    for row_idx, row in pending:
-        crew = row[col["Crew"]] if len(row) > col["Crew"] else ""
-        close_date = (row[col["Close Date"]] if len(row) > col["Close Date"] else "")[:10]
-        groups[(crew, close_date)].append((row_idx, row))
-
-    batch_updates = []
-    reconciled = 0
-
-    for (crew, close_date), group_rows in groups.items():
-        daily_rate = next(
-            (c["daily_overhead"] for c in CREW_CONFIG if c["crew_label"] == crew), 0
-        )
-
-        # job duration = labor_hours / team_count (calendar hours the crew was on site)
-        durations = []
-        for _, row in group_rows:
-            labor_h = float(row[col["Labor Hours"]] or 0) if len(row) > col["Labor Hours"] else 0
-            t_count = int(row[col["Team Count"]] or 1) if len(row) > col["Team Count"] else 1
-            durations.append(labor_h / t_count if t_count else labor_h)
-
-        total_dur = sum(durations)
-
-        for i, (row_idx, row) in enumerate(group_rows):
-            proportion = durations[i] / total_dur if total_dur else 1.0 / len(group_rows)
-            overhead = round(daily_rate * proportion, 2)
-
-            labor_cost    = float(row[col["Labor Cost ($)"]]    or 0) if len(row) > col["Labor Cost ($)"]    else 0
-            materials_cost = float(row[col["Materials Cost ($)"]] or 0) if len(row) > col["Materials Cost ($)"] else 0
-            invoice_total  = float(row[col["Invoice Total ($)"]]  or 0) if len(row) > col["Invoice Total ($)"]  else 0
-
-            total_job_cost = round(overhead + labor_cost + materials_cost, 2)
-            net_profit     = round(invoice_total - total_job_cost, 2)
-            net_margin_pct = round(net_profit / invoice_total * 100, 2) if invoice_total else 0.0
-            net_margin_flag = "FLAG: BELOW 15%" if net_margin_pct < 15 else ""
-
-            for field, value in [
-                ("Daily Overhead Rate ($)", daily_rate),
-                ("Total Overhead ($)",      overhead),
-                ("Total Job Cost ($)",      total_job_cost),
-                ("Net Profit ($)",          net_profit),
-                ("Net Margin %",            net_margin_pct),
-                ("Net Margin Flag",         net_margin_flag),
-            ]:
-                col_letter = _col_to_letter(col[field] + 1)
-                batch_updates.append({
-                    "range": f"{col_letter}{row_idx}",
-                    "values": [[value]],
-                })
-
-            reconciled += 1
-
-    if batch_updates:
-        jobs_ws.batch_update(batch_updates)
-
-    logger.info(f"=== Reconciliation complete: {reconciled} rows updated ===")
-    return {"status": "ok", "reconciled": reconciled}
+    # Per-job overhead allocation was removed — net is reported month-level only
+    # (dashboard.py MONTHLY_OVERHEAD). This is now a safe no-op so the existing
+    # /reconcile-now route and the daily scheduler call don't error.
+    logger.info("Overhead reconciliation is a no-op (per-job overhead removed; net is month-level).")
+    return {"status": "ok", "reconciled": 0}
 
 
 # ---------------------------------------------------------------------------
@@ -702,14 +705,15 @@ def run_sync():
     jobs = [j for j in all_jobs if (j.get("jobType") or "").upper() != "RECURRING"]
     logger.info(f"After filtering recurring jobs: {len(jobs)}")
 
-    synced_ids = load_synced_ids()
-    new_jobs = [j for j in jobs if j.get("id") not in synced_ids]
-    logger.info(f"New jobs to write: {len(new_jobs)}")
+    jobs = [
+        j for j in jobs
+        if (utc_iso_to_central_date(j.get("completedAt")) >= SYNC_START_DATE
+            or is_cutoff_exempt(j.get("jobNumber")))
+        and not is_excluded(j.get("jobNumber"))
+    ]
+    logger.info(f"After fresh-start cutoff ({SYNC_START_DATE}): {len(jobs)}")
 
-    if not new_jobs:
-        write_last_sync("ok", 0, "No new jobs.")
-        return {"status": "ok", "synced": 0, "message": "No new jobs to sync."}
-
+    # Connect to the sheet first so we can diff against what's already there.
     try:
         gc = get_sheets_client()
         spreadsheet = gc.open_by_key(SHEET_ID)
@@ -721,32 +725,74 @@ def run_sync():
         write_last_sync("error", 0, msg)
         return {"status": "error", "message": msg}
 
-    rows = []
+    # Map existing Job ID -> sheet row number so we can overwrite a job in place
+    # when its Jobber numbers change, instead of only ever appending new jobs.
+    # Row 1 is the header, so data rows are numbered from 2.
+    try:
+        existing_values = jobs_ws.get_all_values()
+        id_to_row = {
+            r[0]: idx
+            for idx, r in enumerate(existing_values[1:], start=2)
+            if r and r[0]
+        }
+    except Exception as e:
+        msg = f"Failed to read existing rows: {e}"
+        logger.error(msg)
+        write_last_sync("error", 0, msg)
+        return {"status": "error", "message": msg}
+
+    last_col = _col_to_letter(len(JOBS_HEADERS))
+
+    appends = []
+    updates = []  # batch_update payload: {"range", "values"}
     errors = []
-    for job in new_jobs:
+    for job in jobs:
         try:
-            rows.append((job.get("id"), row_from_costed(cost_job(job))))
+            row = row_from_costed(cost_job(job))
         except Exception as e:
             msg = f"Job {job.get('jobNumber')}: {e}"
             logger.error(msg)
             errors.append(msg)
+            continue
+
+        existing_row = id_to_row.get(job.get("id"))
+        if existing_row:
+            updates.append({
+                "range": f"A{existing_row}:{last_col}{existing_row}",
+                "values": [row],
+            })
+        else:
+            appends.append(row)
 
     written = 0
-    if rows:
+    if appends:
         try:
-            jobs_ws.append_rows([r for _, r in rows], value_input_option="RAW")
-            for job_id, _ in rows:
-                synced_ids.add(job_id)
-            written = len(rows)
+            jobs_ws.append_rows(appends, value_input_option="RAW")
+            written = len(appends)
         except Exception as e:
-            msg = f"Batch write failed: {e}"
+            msg = f"Batch append failed: {e}"
             logger.error(msg)
             errors.append(msg)
 
+    updated = 0
+    if updates:
+        try:
+            jobs_ws.batch_update(updates, value_input_option="RAW")
+            updated = len(updates)
+        except Exception as e:
+            msg = f"Batch update failed: {e}"
+            logger.error(msg)
+            errors.append(msg)
+
+    # synced_jobs.json is no longer the dedup gate (the sheet is the source of
+    # truth now), but keep it current so nothing downstream reads stale state.
+    synced_ids = load_synced_ids()
+    synced_ids.update(j.get("id") for j in jobs)
     save_synced_ids(synced_ids)
-    write_last_sync("ok", written)
-    logger.info(f"=== Sync complete: {written} jobs written ===")
-    result = {"status": "ok", "synced": written}
+
+    write_last_sync("ok", written + updated)
+    logger.info(f"=== Sync complete: {written} added, {updated} updated ===")
+    result = {"status": "ok", "synced": written, "updated": updated}
     if errors:
         result["errors"] = errors
     return result

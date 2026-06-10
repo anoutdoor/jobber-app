@@ -1,0 +1,8 @@
+[tools]
+python = "3.12.8"
+
+# mise 2026.x rejects the prebuilt CPython standalone builds because they ship
+# without GitHub artifact attestations. Skip that verification so the build
+# can install Python at all.
+[settings]
+python.github_attestations = false

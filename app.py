@@ -14,6 +14,7 @@ from scheduler import start_scheduler, stop_scheduler
 from financial import qbo as financial_qbo
 from financial import google_auth as financial_google_auth
 from financial.digest import run_digest
+from mow_time_export import main as run_mow_export
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -175,6 +176,14 @@ def reconcile_now():
     if "access_token" not in session:
         return redirect(url_for("login"))
     result = reconcile_daily_overhead()
+    return jsonify(result)
+
+
+@app.route("/mow-export-now")
+def mow_export_now():
+    if "access_token" not in session:
+        return redirect(url_for("login"))
+    result = run_mow_export()
     return jsonify(result)
 
 
@@ -550,7 +559,8 @@ if __name__ == "__main__":
 
     # Avoid double-start from Flask's reloader spawning a second process
     if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not app.debug:
-        start_scheduler(run_sync, reconcile_daily_overhead, digest_fn=run_digest)
+        start_scheduler(run_sync, reconcile_daily_overhead, digest_fn=run_digest,
+                        mow_export_fn=run_mow_export)
 
     import atexit
     atexit.register(stop_scheduler)

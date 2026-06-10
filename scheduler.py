@@ -10,7 +10,7 @@ _scheduler = None
 CT = pytz.timezone("America/Chicago")
 
 
-def start_scheduler(sync_fn, reconcile_fn, digest_fn=None):
+def start_scheduler(sync_fn, reconcile_fn, digest_fn=None, mow_export_fn=None):
     global _scheduler
     if _scheduler and _scheduler.running:
         return
@@ -44,6 +44,16 @@ def start_scheduler(sync_fn, reconcile_fn, digest_fn=None):
         logger.info("Scheduler started — hourly sync, 8pm reconcile, 6am cashflow digest (CT).")
     else:
         logger.info("Scheduler started — hourly sync + 8pm reconciliation (CT).")
+
+    if mow_export_fn:
+        _scheduler.add_job(
+            mow_export_fn,
+            trigger=CronTrigger(day_of_week="sun", hour=21, minute=0, timezone=CT),
+            id="weekly_mow_export",
+            name="Weekly mow-time export (Sun 9pm CT)",
+            replace_existing=True,
+        )
+        logger.info("Scheduled weekly mow-time export (Sun 9pm CT).")
 
     _scheduler.start()
 

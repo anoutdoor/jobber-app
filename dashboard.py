@@ -1,7 +1,21 @@
-from datetime import date, timedelta
+import calendar
+from datetime import date, datetime, timedelta
 from collections import defaultdict
 
-from jobber_sync import get_sheets_client, SHEET_ID
+import pytz
+
+from jobber_sync import get_sheets_client, SHEET_ID, is_cutoff_exempt, is_excluded, JOBS_HEADERS
+
+# Business runs on Central time; Railway runs in UTC, so "today" must be Central
+# or the whole month/week view flips a day early every evening.
+CENTRAL_TZ = pytz.timezone("America/Chicago")
+
+MONTHLY_OVERHEAD = 35192.83   # total monthly company overhead; month-level net only, never per job
+
+# Fresh-start cutoff: the dashboard only shows jobs completed on/after this date
+# (matches jobber_sync.SYNC_START_DATE). Anything older is ignored. Reset to a
+# clean June 2026 start on 2026-06-01.
+DASHBOARD_START_DATE = date(2026, 6, 1)
 
 
 def safe_float(val, default=0.0):
@@ -13,23 +27,68 @@ def safe_float(val, default=0.0):
 
 
 def get_sheet_jobs():
+    # NOTE: we deliberately use get_all_values() + manual mapping instead of
+    # gspread's get_all_records(), because get_all_records() throws on any
+    # duplicate or blank header in row 1. A single stray manual edit (e.g. a
+    # leftover tag column) would then blank the whole dashboard. Mapping by the
+    # known JOBS_HEADERS names instead makes the read immune to extra, blank, or
+    # duplicate columns, and to columns being reordered.
     try:
         gc = get_sheets_client()
         ws = gc.open_by_key(SHEET_ID).worksheet("Jobs")
-        return ws.get_all_records()
+        rows = ws.get_all_values()
     except Exception as e:
+        print(f"[dashboard] Jobs sheet read failed: {e}")
         return []
+
+    if len(rows) < 2:
+        return []
+
+    header_row = rows[0]
+    # Map each known header to its first matching column (first wins, so a
+    # duplicated header can't hijack the read).
+    col_index = {}
+    for i, name in enumerate(header_row):
+        name = (name or "").strip()
+        if name in JOBS_HEADERS and name not in col_index:
+            col_index[name] = i
+
+    records = []
+    for row in rows[1:]:
+        if not any((cell or "").strip() for cell in row):
+            continue  # skip fully blank rows
+        records.append({
+            name: (row[i] if i < len(row) else "")
+            for name, i in col_index.items()
+        })
+    return records
 
 
 def parse_jobs(raw):
     parsed = []
+    seen_ids = set()
     for job in raw:
+        # Dedupe on the unique Jobber Job ID (the sheet has historical dupes).
+        job_id = str(job.get("Job ID", "")).strip()
+        if job_id:
+            if job_id in seen_ids:
+                continue
+            seen_ids.add(job_id)
+
         close_str = str(job.get("Close Date", ""))[:10]
         if not close_str or len(close_str) < 10:
             continue
         try:
             close_date = date.fromisoformat(close_str)
         except ValueError:
+            continue
+
+        if close_date < DASHBOARD_START_DATE and not is_cutoff_exempt(job.get("Job #", "")):
+            continue
+
+        # Jobs closed in Jobber by mistake: hide them even if a stale row is
+        # still sitting in the sheet from a prior sync.
+        if is_excluded(job.get("Job #", "")):
             continue
 
         def pending_or_float(key):
@@ -40,6 +99,9 @@ def parse_jobs(raw):
             "job_number":       str(job.get("Job #", "")),
             "job_title":        str(job.get("Job Title", "")),
             "client":           str(job.get("Client", "")),
+            # Crew comes straight from the sync's "Crew" column. Subcontractors
+            # like Brock are resolved there too (from Jobber assigned users), so
+            # no separate handling is needed here.
             "crew":             str(job.get("Crew", "Unknown")),
             "close_date":       close_date,
             "close_date_str":   close_str,
@@ -76,7 +138,7 @@ def compute_dashboard():
     if not jobs:
         return None
 
-    today = date.today()
+    today = datetime.now(CENTRAL_TZ).date()
     cur_month = month_key(today)
 
     month_jobs = [j for j in jobs if month_key(j["close_date"]) == cur_month]
@@ -86,9 +148,13 @@ def compute_dashboard():
     month_job_count = len(month_jobs)
 
     gm_vals = [j["gross_margin_pct"] for j in month_jobs if j["gross_margin_pct"] is not None]
-    nm_vals = [j["net_margin_pct"]   for j in month_jobs if j["net_margin_pct"]   is not None]
     avg_gross_margin = round(sum(gm_vals) / len(gm_vals), 1) if gm_vals else None
-    avg_net_margin   = round(sum(nm_vals) / len(nm_vals), 1) if nm_vals else None
+
+    # Net is computed at the month level only: total gross profit minus the flat
+    # company overhead. We never allocate overhead per job.
+    month_gross_profit = round(sum(j["gross_profit"] for j in month_jobs), 2)
+    month_net_profit   = round(month_gross_profit - MONTHLY_OVERHEAD, 2)
+    avg_net_margin     = round(month_net_profit / month_revenue * 100, 1) if month_revenue else None
 
     # ── Hours KPIs ───────────────────────────────────────────────────────────
     total_estimated_hours = 0.0
@@ -103,7 +169,10 @@ def compute_dashboard():
             jobs_with_estimates += 1
 
     # ── Crew leaderboard ─────────────────────────────────────────────────────
-    CREWS = ["Ernesto", "Arturo", "Gonzalo", "Other"]
+    # Brock is a per-job subcontractor treated as a crew. His pay lives in
+    # materials_cost (the Jobber expense), so his card shows "paid" instead of
+    # rev/visit-day, but otherwise he behaves like any other crew.
+    CREWS = ["Ernesto", "Jovani", "Jorge", "Brock", "Other"]
     crew_stats = {}
     for crew in CREWS:
         cj = [j for j in month_jobs if j["crew"] == crew]
@@ -114,6 +183,7 @@ def compute_dashboard():
             "revenue":          round(sum(j["revenue"] for j in cj), 2),
             "avg_gross_margin": round(sum(cgm) / len(cgm), 1) if cgm else None,
             "avg_rev_per_day":  round(sum(rpd) / len(rpd), 2) if rpd else None,
+            "paid":             round(sum(j["materials_cost"] for j in cj), 2),
         }
 
     # ── Chart: gross margin by crew ──────────────────────────────────────────
@@ -126,21 +196,19 @@ def compute_dashboard():
         ],
     }
 
-    # ── Chart: monthly revenue last 6 months ─────────────────────────────────
-    rev_labels, rev_data = [], []
-    for i in range(5, -1, -1):
-        m = today.month - i
-        y = today.year
-        while m <= 0:
-            m += 12
-            y -= 1
-        mk = f"{y}-{m:02d}"
-        label = date(y, m, 1).strftime("%b %Y")
-        total = round(sum(j["revenue"] for j in jobs if month_key(j["close_date"]) == mk), 2)
-        rev_labels.append(label)
-        rev_data.append(total)
-
-    monthly_revenue_chart = {"labels": rev_labels, "data": rev_data}
+    # ── Projected revenue (current-month run-rate) ───────────────────────────
+    # Simple linear pace: revenue so far / days elapsed * days in month. Far more
+    # useful than a 6-month history while the dataset is still being built up.
+    days_in_month = calendar.monthrange(today.year, today.month)[1]
+    day_of_month = today.day
+    projected_revenue = (
+        round(month_revenue / day_of_month * days_in_month, 2)
+        if day_of_month else month_revenue
+    )
+    projected_revenue_chart = {
+        "labels": ["Month so far", "Projected"],
+        "data":   [month_revenue, projected_revenue],
+    }
 
     # ── Chart: jobs per week last 8 weeks ────────────────────────────────────
     week_labels, week_counts = [], []
@@ -164,25 +232,20 @@ def compute_dashboard():
             continue
 
         wk_revenue   = round(sum(j["revenue"] for j in wk_jobs), 2)
-        wk_cost_vals = [j["total_job_cost"] for j in wk_jobs if j["total_job_cost"] is not None]
-        wk_cost      = round(sum(wk_cost_vals), 2) if wk_cost_vals else None
+        wk_labor     = round(sum(j["labor_cost"] for j in wk_jobs), 2)
+        wk_materials = round(sum(j["materials_cost"] for j in wk_jobs), 2)
         wk_gp        = round(sum(j["gross_profit"] for j in wk_jobs), 2)
         wk_gm        = round(wk_gp / wk_revenue * 100, 1) if wk_revenue else None
-
-        np_vals       = [j["net_profit"] for j in wk_jobs if j["net_profit"] is not None]
-        wk_np         = round(sum(np_vals), 2) if np_vals else None
-        wk_nm         = round(wk_np / wk_revenue * 100, 1) if (wk_np is not None and wk_revenue) else None
 
         weeks.append({
             "label":        f"{ws.strftime('%b %d')} – {we.strftime('%b %d')}",
             "start":        ws.isoformat(),
             "jobs":         len(wk_jobs),
             "revenue":      wk_revenue,
-            "total_cost":   wk_cost,
+            "labor":        wk_labor,
+            "materials":    wk_materials,
             "gross_profit": wk_gp,
             "gross_margin": wk_gm,
-            "net_profit":   wk_np,
-            "net_margin":   wk_nm,
             "job_list":     sorted(wk_jobs, key=lambda j: j["close_date"]),
         })
 
@@ -194,10 +257,16 @@ def compute_dashboard():
         "month_job_count":      month_job_count,
         "avg_gross_margin":     avg_gross_margin,
         "avg_net_margin":       avg_net_margin,
+        "month_gross_profit":   month_gross_profit,
+        "month_net_profit":     month_net_profit,
+        "monthly_overhead":     MONTHLY_OVERHEAD,
         "crew_stats":           crew_stats,
         "crews":                CREWS,
         "crew_margin_chart":    crew_margin_chart,
-        "monthly_revenue_chart": monthly_revenue_chart,
+        "projected_revenue_chart": projected_revenue_chart,
+        "projected_revenue":    projected_revenue,
+        "days_in_month":        days_in_month,
+        "day_of_month":         day_of_month,
         "weekly_jobs_chart":    weekly_jobs_chart,
         "weeks":                weeks,
         "total_estimated_hours": round(total_estimated_hours, 1),
