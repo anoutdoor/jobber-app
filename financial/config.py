@@ -50,3 +50,40 @@ def qbo_accounts():
     """Configured bank + CC accounts. Balances may be overridden by the
     'Balance Overrides' Google Sheet tab (id-keyed)."""
     return load_config().get("qbo", {}).get("accounts", []) or []
+
+
+# --- New sections added 2026-06-09 -----------------------------------------
+
+def cc_rewards():
+    """Credit card rewards available — economic offset to CC debt.
+    Returns dict {available, as_of, note} or {} if not configured."""
+    return load_config().get("cc_rewards") or {}
+
+
+def customer_deposits():
+    """List of customer deposits held (liability). Each entry: {client, amount, as_of}."""
+    return load_config().get("customer_deposits") or []
+
+
+def uncleared_checks_amount():
+    """Sum of checks written but not yet cleared (still in bank balance,
+    but will leave soon)."""
+    cfg = load_config().get("uncleared_checks") or {}
+    return float(cfg.get("amount") or 0)
+
+
+def owner_pay_amount():
+    """Owner draw / pay owed (separate from crew payroll)."""
+    cfg = load_config().get("owner_pay") or {}
+    return float(cfg.get("amount") or 0)
+
+
+def variable_overhead():
+    """Static reference info for monthly variable overhead + breakeven target."""
+    return load_config().get("variable_overhead") or {}
+
+
+def bucket_settings():
+    """Dates used for the email's two-bucket structure (this-week / by-July-1).
+    Returns dict {due_by_july_1: 'YYYY-MM-DD'}."""
+    return load_config().get("buckets") or {}

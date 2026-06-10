@@ -12,6 +12,12 @@ from financial.config import (
     anomaly_settings,
     qbo_accounts,
     vendors as vendors_cfg,
+    cc_rewards,
+    customer_deposits,
+    uncleared_checks_amount,
+    owner_pay_amount,
+    variable_overhead,
+    bucket_settings,
 )
 from financial.jobber_finance import fetch_open_invoices, fetch_time_entries_since, current_pay_week_start
 from financial.overhead_sheet import fetch_upcoming_bills
@@ -246,7 +252,33 @@ def build_snapshot(today=None):
         payroll = compute_payroll_accrual(today, entries=time_entries)
 
     upcoming_bills = fetch_upcoming_bills(today)
-    position = compute_position(qbo_summary, ar, vendors, payroll, upcoming_bills)
+
+    # Pull new categories from config
+    rewards_cfg = cc_rewards()
+    rewards_amount = float(rewards_cfg.get("available", 0) or 0)
+    deposits = customer_deposits()
+    deposits_total = sum(float(d.get("amount") or 0) for d in deposits)
+    uncleared = uncleared_checks_amount()
+    owner_pay = owner_pay_amount()
+    var_overhead = variable_overhead()
+
+    # Parse bucket date from config
+    bcfg = bucket_settings()
+    jul1_str = bcfg.get("due_by_july_1")
+    try:
+        jul1_date = date.fromisoformat(jul1_str) if jul1_str else date(today.year, 7, 1)
+    except (ValueError, TypeError):
+        jul1_date = date(today.year, 7, 1)
+
+    position = compute_position(
+        qbo_summary, ar, vendors, payroll, upcoming_bills,
+        cc_rewards_amount=rewards_amount,
+        customer_deposits_total=deposits_total,
+        uncleared_checks=uncleared,
+        owner_pay=owner_pay,
+        today=today,
+        due_by_jul1_date=jul1_date,
+    )
 
     snapshot = {
         "date": today,
@@ -256,6 +288,11 @@ def build_snapshot(today=None):
         "vendors": vendors,
         "payroll": payroll,
         "upcoming_bills": upcoming_bills,
+        "cc_rewards": rewards_cfg,
+        "customer_deposits": deposits,
+        "uncleared_checks_amount": uncleared,
+        "owner_pay_amount": owner_pay,
+        "variable_overhead": var_overhead,
         "unavailable_sources": unavailable,
     }
 

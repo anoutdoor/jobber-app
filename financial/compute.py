@@ -262,37 +262,108 @@ def compute_payroll_accrual(today=None, entries=None):
 # Full position
 # ---------------------------------------------------------------------------
 
-def compute_position(qbo_summary, ar_data, vendor_data, payroll_data, upcoming_bills):
-    """Roll everything up into the headline numbers.
+def compute_position(
+    qbo_summary,
+    ar_data,
+    vendor_data,
+    payroll_data,
+    upcoming_bills,
+    *,
+    cc_rewards_amount=0.0,
+    customer_deposits_total=0.0,
+    uncleared_checks=0.0,
+    owner_pay=0.0,
+    today=None,
+    due_by_jul1_date=None,
+):
+    """Full position with two-bucket free-cash views.
 
-    Two views:
-      - Liquid right now (no AR, no future bills): cash - CC - vendor - payroll
-      - Total position (includes AR receivable): liquid + AR
-      - 30-day forecast: total - upcoming_bills(30) - estimated next-week payroll accrual
+    NET POSITION (headline) zeros out every debt + liability and pulls in
+    AR + CC rewards as offsetting assets. This is your true economic
+    position if everything cleared and got paid right now.
 
-    AR is shown but NOT subtracted; CC + vendor + payroll are all liabilities.
+    Two free-cash views:
+      - Free cash THIS WEEK: liquid - obligations through end of this week
+      - Free cash BY JULY 1: liquid - obligations through 2026-07-01 (incl. vendor AP)
+
+    Obligations are NOT double-counted between the two windows; the July 1
+    window is a superset of this week's.
     """
-    cash = qbo_summary.get("cash_total", 0.0)
-    cc_debt = qbo_summary.get("cc_total", 0.0)
-    vendor_total = vendor_data.get("total", 0.0)
-    payroll_accrued = payroll_data.get("total_accrual", 0.0)
-    ar_total = ar_data.get("total_outstanding", 0.0)
+    from datetime import timedelta as _td
 
-    liquid_now = round(cash - cc_debt - vendor_total - payroll_accrued, 2)
-    total_position = round(liquid_now + ar_total, 2)
+    today = today or date.today()
+    # End of this week = next Sunday (or today if it's already Sunday)
+    days_to_sunday = (6 - today.weekday()) % 7
+    end_of_week = today + _td(days=days_to_sunday)
+    jul1 = due_by_jul1_date or date(today.year, 7, 1)
 
-    # 30-day forecast
-    bills_30 = sum((b["amount"] or 0) for b in upcoming_bills if b.get("days_until_due") is not None and 0 <= b["days_until_due"] <= 30)
-    forecast_30 = round(total_position - bills_30, 2)
+    cash = float(qbo_summary.get("cash_total", 0.0) or 0)
+    cc_debt = float(qbo_summary.get("cc_total", 0.0) or 0)
+    vendor_total = float(vendor_data.get("total", 0.0) or 0)
+    payroll_accrued = float(payroll_data.get("total_accrual", 0.0) or 0)
+    ar_total = float(ar_data.get("total_outstanding", 0.0) or 0)
+
+    cc_rewards_amount = float(cc_rewards_amount or 0)
+    customer_deposits_total = float(customer_deposits_total or 0)
+    uncleared_checks = float(uncleared_checks or 0)
+    owner_pay = float(owner_pay or 0)
+
+    # Bills classified by window
+    def _in_window(b, cutoff):
+        nd = b.get("next_due_date")
+        if nd is None or b.get("amount") is None:
+            return False
+        return today <= nd <= cutoff
+
+    bills_this_week = [b for b in upcoming_bills if _in_window(b, end_of_week)]
+    bills_by_jul1 = [b for b in upcoming_bills if _in_window(b, jul1)]
+    bills_this_week_total = round(sum(b["amount"] for b in bills_this_week), 2)
+    bills_by_jul1_total = round(sum(b["amount"] for b in bills_by_jul1), 2)
+
+    # This week obligations: bills + uncleared checks + payroll + owner pay
+    this_week_obligations = round(
+        bills_this_week_total + uncleared_checks + payroll_accrued + owner_pay, 2
+    )
+    # By July 1: this week's stuff + remaining bills through 7/1 + vendor AP
+    by_jul1_obligations = round(
+        bills_by_jul1_total + uncleared_checks + payroll_accrued + owner_pay + vendor_total, 2
+    )
+
+    free_cash_this_week = round(cash - this_week_obligations, 2)
+    free_cash_by_jul1 = round(cash - by_jul1_obligations, 2)
+
+    # Net position: full economic value
+    net_position = round(
+        cash + ar_total + cc_rewards_amount
+        - cc_debt - vendor_total - payroll_accrued - owner_pay
+        - customer_deposits_total - uncleared_checks,
+        2,
+    )
 
     return {
-        "cash": cash,
-        "cc_debt": cc_debt,
-        "vendor_debt": vendor_total,
-        "payroll_accrued": payroll_accrued,
-        "ar_outstanding": ar_total,
-        "liquid_now": liquid_now,
-        "total_position": total_position,
-        "bills_next_30": round(bills_30, 2),
-        "forecast_30": forecast_30,
+        # Assets
+        "cash": round(cash, 2),
+        "cc_rewards_available": round(cc_rewards_amount, 2),
+        "ar_outstanding": round(ar_total, 2),
+        # Liabilities
+        "cc_debt": round(cc_debt, 2),
+        "vendor_debt": round(vendor_total, 2),
+        "payroll_accrued": round(payroll_accrued, 2),
+        "owner_pay": round(owner_pay, 2),
+        "customer_deposits": round(customer_deposits_total, 2),
+        "uncleared_checks": round(uncleared_checks, 2),
+        # Windows
+        "this_week_end": end_of_week.isoformat(),
+        "by_jul1_date": jul1.isoformat(),
+        "bills_this_week_total": bills_this_week_total,
+        "bills_by_jul1_total": bills_by_jul1_total,
+        "this_week_obligations_total": this_week_obligations,
+        "by_jul1_obligations_total": by_jul1_obligations,
+        "free_cash_this_week": free_cash_this_week,
+        "free_cash_by_jul1": free_cash_by_jul1,
+        # Headline
+        "net_position": net_position,
+        # Backwards-compat shims for anomaly flag code that reads these names
+        "liquid_now": round(cash - cc_debt - vendor_total - payroll_accrued, 2),
+        "total_position": net_position,
     }
