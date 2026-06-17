@@ -4,7 +4,6 @@
 email:
   recipients:
     - alex@anoutdoorservices.com
-    - niko@anoutdoorservices.com
   subject_prefix: "A&N Daily Cashflow"
   send_hour_ct: 6      # 24h local time. Scheduler is timezone-aware.
 
