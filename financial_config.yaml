@@ -139,7 +139,7 @@ payroll:
   # The LAST DAY (Sunday) of the most recently paid-out pay period.
   # Accrual window = day after this through 'now'. Update this each
   # Thursday after payroll lands.
-  last_payroll_paid_through: "2026-06-07"
+  last_payroll_paid_through: "2026-06-14"
 
 # AR aging buckets. "Current" = not yet past due (days past due <= 0).
 ar:
