@@ -199,6 +199,77 @@ def digest_now():
     return jsonify({k: v for k, v in result.items() if k != "html"})
 
 
+# Origins allowed to call /payroll-owed cross-origin (the cash position tracker).
+_PAYROLL_CORS_ORIGINS = {
+    "https://cash-position-tracker-production.up.railway.app",
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "http://localhost:5175",
+}
+
+
+def _payroll_cors(resp):
+    """Add CORS headers when the request comes from an allowed origin. The
+    endpoint is key-gated and uses no cookies, so we only echo the origin back
+    and permit the X-Api-Key header."""
+    origin = request.headers.get("Origin", "")
+    if origin in _PAYROLL_CORS_ORIGINS:
+        resp.headers["Access-Control-Allow-Origin"] = origin
+        resp.headers["Vary"] = "Origin"
+        resp.headers["Access-Control-Allow-Headers"] = "X-Api-Key, Content-Type"
+        resp.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+        resp.headers["Access-Control-Max-Age"] = "86400"
+    return resp
+
+
+@app.route("/payroll-owed", methods=["GET", "OPTIONS"])
+def payroll_owed():
+    """Read-only payroll accrual for the cash position tracker. Returns the same
+    numbers as the daily digest's payroll block, gated by a shared key
+    (PAYROLL_API_KEY) so it can be called cross-origin without a login session.
+    Jobber tokens stay server-side; only the computed dollar figures cross the
+    wire."""
+    if request.method == "OPTIONS":
+        return _payroll_cors(app.make_response(("", 204)))
+
+    expected = os.getenv("PAYROLL_API_KEY")
+    provided = request.headers.get("X-Api-Key", "")
+    if not expected or not secrets.compare_digest(provided, expected):
+        resp = jsonify({"error": "unauthorized"})
+        resp.status_code = 401
+        return _payroll_cors(resp)
+
+    from datetime import datetime
+    from financial.compute import compute_payroll_accrual
+    from financial.jobber_finance import current_pay_week_start, fetch_time_entries_since
+
+    week_start = current_pay_week_start()
+    start_dt = datetime.combine(week_start, datetime.min.time())
+    entries = fetch_time_entries_since(start_dt)
+    if entries is None:
+        resp = jsonify({
+            "error": "jobber_auth",
+            "message": "Jobber token missing or expired. Reconnect jobber-app at /login.",
+        })
+        resp.status_code = 502
+        return _payroll_cors(resp)
+
+    payroll = compute_payroll_accrual(entries=entries)
+    resp = jsonify({
+        "ok": True,
+        "as_of": payroll["as_of"],
+        "week_start": payroll["week_start"],
+        "total_hours": payroll["total_hours"],
+        "gross_pay": payroll["gross_pay"],
+        "tax_burden_pct": payroll["tax_burden_pct"],
+        "tax_burden": payroll["tax_burden"],
+        "total_accrual": payroll["total_accrual"],
+        "breakdown": payroll["breakdown"],
+        "missing_rates": payroll["missing_rates"],
+    })
+    return _payroll_cors(resp)
+
+
 @app.route("/financial-debug")
 def financial_debug():
     """Dump raw responses from each Jobber query so we can see which ones
