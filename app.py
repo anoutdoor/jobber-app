@@ -5,7 +5,7 @@ import logging
 import requests
 from dotenv import load_dotenv
 
-from flask import Flask, redirect, request, session, url_for, jsonify, render_template
+from flask import Flask, redirect, request, session, url_for, jsonify, render_template, send_from_directory
 from werkzeug.middleware.proxy_fix import ProxyFix
 from jobber_sync import save_tokens, run_sync, read_last_sync, reconcile_daily_overhead
 from dashboard import compute_dashboard
@@ -87,6 +87,7 @@ def index():
             + "<p><a href='/google/login'>Re-authorize Google (Sheets + Gmail Send)</a></p>"
             + "<p><a href='/dashboard'><strong>→ Open Dashboard</strong></a></p>"
             + "<p><a href='/mow-dashboard'><strong>→ Open Mowing Numbers Dashboard</strong></a></p>"
+            + "<p><a href='/financials'><strong>→ Open Financial Dashboard (P&amp;L)</strong></a></p>"
             + "<p><a href='/sync-now'>Run Sync Now</a></p>"
             + "<p><a href='/backfill'>Run Historical Backfill (Jan 1 2026 – Today)</a></p>"
             + "<p><a href='/reconcile-now'>Run Overhead Reconciliation Now</a></p>"
@@ -217,7 +218,7 @@ def _payroll_cors(resp):
         resp.headers["Access-Control-Allow-Origin"] = origin
         resp.headers["Vary"] = "Origin"
         resp.headers["Access-Control-Allow-Headers"] = "X-Api-Key, Content-Type"
-        resp.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+        resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
         resp.headers["Access-Control-Max-Age"] = "86400"
     return resp
 
@@ -607,6 +608,27 @@ def mow_dashboard():
                            data_json=_json.dumps(payload), meta=payload["meta"])
 
 
+# --- Financial (P&L) dashboard ------------------------------------------------
+# Pre-built React/Recharts app (built in the Maintenance Program repo with
+# `npm run build:jobber`, base = /financials/). Its files live in
+# financial_dashboard/. Unlike the mow dashboard this shows full P&L numbers,
+# so it is gated behind the Jobber login session.
+FIN_DASH_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "financial_dashboard")
+
+
+@app.route("/financials")
+def financials():
+    if "access_token" not in session:
+        return redirect(url_for("login"))
+    return send_from_directory(FIN_DASH_DIR, "index.html")
+
+
+@app.route("/financials/<path:asset>")
+def financials_assets(asset):
+    # Serves JS/CSS and pnl.json. Gated too, because pnl.json holds the numbers.
+    if "access_token" not in session:
+        return redirect(url_for("login"))
+    return send_from_directory(FIN_DASH_DIR, asset)
 
 
 @app.route("/clients")
