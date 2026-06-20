@@ -7,7 +7,7 @@ Sheets API.)
 """
 import logging
 import calendar
-from datetime import date
+from datetime import date, timedelta
 
 from financial.config import overhead_bills
 
@@ -53,6 +53,17 @@ def fetch_upcoming_bills(today=None):
         amount = r.get("amount")
         billing_day = r.get("billing_day")
 
+        # Optional: paid_ahead_through suppresses bills whose next
+        # occurrence falls on or before the given date — useful for
+        # multi-month-paid items (e.g. insurance paid 3 months at a time).
+        paid_ahead_through = None
+        raw_paid_ahead = r.get("paid_ahead_through")
+        if raw_paid_ahead:
+            try:
+                paid_ahead_through = date.fromisoformat(str(raw_paid_ahead))
+            except (ValueError, TypeError):
+                paid_ahead_through = None
+
         bill = {
             "expense": expense,
             "amount": float(amount) if amount is not None else None,
@@ -61,6 +72,7 @@ def fetch_upcoming_bills(today=None):
             "category": (r.get("category") or "").strip(),
             "fixed_variable": (r.get("fixed_variable") or "Fixed").strip(),
             "notes": (r.get("notes") or "").strip(),
+            "paid_ahead_through": paid_ahead_through.isoformat() if paid_ahead_through else None,
             "next_due_date": None,
             "days_until_due": None,
             "skip_reason": None,
@@ -74,6 +86,10 @@ def fetch_upcoming_bills(today=None):
             bill["skip_reason"] = "billing date unset/irregular"
         else:
             nd = _next_occurrence(int(billing_day), today)
+            # If paid ahead through some date, push next_due to the first
+            # occurrence after that date.
+            while nd and paid_ahead_through and nd <= paid_ahead_through:
+                nd = _next_occurrence(int(billing_day), nd + timedelta(days=1))
             if nd:
                 bill["next_due_date"] = nd
                 bill["days_until_due"] = (nd - today).days
