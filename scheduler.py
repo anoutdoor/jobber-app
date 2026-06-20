@@ -48,12 +48,12 @@ def start_scheduler(sync_fn, reconcile_fn, digest_fn=None, mow_export_fn=None):
     if mow_export_fn:
         _scheduler.add_job(
             mow_export_fn,
-            trigger=CronTrigger(day_of_week="sun", hour=21, minute=0, timezone=CT),
-            id="weekly_mow_export",
-            name="Weekly mow-time export (Sun 9pm CT)",
+            trigger=CronTrigger(hour=19, minute=0, timezone=CT),
+            id="daily_mow_export",
+            name="Daily mow-time export + dashboard refresh (7pm CT)",
             replace_existing=True,
         )
-        logger.info("Scheduled weekly mow-time export (Sun 9pm CT).")
+        logger.info("Scheduled daily mow-time export + dashboard refresh (7pm CT).")
 
     _scheduler.start()
 

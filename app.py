@@ -86,6 +86,7 @@ def index():
             + qbo_section
             + "<p><a href='/google/login'>Re-authorize Google (Sheets + Gmail Send)</a></p>"
             + "<p><a href='/dashboard'><strong>→ Open Dashboard</strong></a></p>"
+            + "<p><a href='/mow-dashboard'><strong>→ Open Mowing Numbers Dashboard</strong></a></p>"
             + "<p><a href='/sync-now'>Run Sync Now</a></p>"
             + "<p><a href='/backfill'>Run Historical Backfill (Jan 1 2026 – Today)</a></p>"
             + "<p><a href='/reconcile-now'>Run Overhead Reconciliation Now</a></p>"
@@ -389,6 +390,28 @@ def dashboard():
     except Exception as e:
         data = None
     return render_template("dashboard.html", data=data)
+
+
+@app.route("/mow-dashboard")
+def mow_dashboard():
+    """Mowing-numbers dashboard. Reads the cache the daily mow export writes;
+    on a cold start (no cache) or ?refresh=1 it does a live read-only Jobber
+    pull. No secrets on this page, so it matches /dashboard (no auth gate)."""
+    import json as _json
+    from mow_dashboard import get_payload
+    force = request.args.get("refresh") == "1"
+    try:
+        payload = get_payload(force=force)
+    except Exception as e:
+        return (
+            "<h2>Mowing dashboard</h2>"
+            "<p>Couldn't build the numbers right now.</p>"
+            f"<pre style='color:#a5281b'>{e}</pre>"
+            "<p>If the Jobber token just expired, wait for the next hourly sync "
+            "and <a href='/mow-dashboard?refresh=1'>try again</a>.</p>"
+        ), 500
+    return render_template("mow_dashboard.html",
+                           data_json=_json.dumps(payload), meta=payload["meta"])
 
 
 

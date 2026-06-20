@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>A&amp;N Mowing Numbers</title>
+<style>
+:root{
+  --green:#1f7a3d; --green-d:#155c2c; --amber:#e0a106; --red:#c0392b;
+  --blue:#2a7ab0; --ink:#1d2b22; --muted:#6b7770; --line:#e3e7e3;
+  --bg:#f4f6f3; --card:#ffffff; --good:#2a9d54;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+.wrap{max-width:1180px;margin:0 auto;padding:24px 20px 80px}
+header.top{display:flex;justify-content:space-between;align-items:flex-end;
+  flex-wrap:wrap;gap:12px;border-bottom:3px solid var(--green);padding-bottom:14px;margin-bottom:8px}
+header.top h1{margin:0;font-size:25px;letter-spacing:-.2px}
+header.top .sub{color:var(--muted);font-size:13px;margin-top:4px}
+.note{background:#fff8e6;border:1px solid #f0d98a;border-radius:8px;padding:10px 14px;
+  font-size:13px;color:#6b5a16;margin:14px 0}
+h2.sec{font-size:18px;margin:34px 0 4px;display:flex;align-items:center;gap:9px}
+h2.sec .tag{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.4px;
+  color:var(--muted);border:1px solid var(--line);border-radius:20px;padding:2px 9px;background:#fff}
+p.lead{color:var(--muted);margin:4px 0 14px;font-size:13.5px;max-width:780px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:16px 0 4px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:11px;padding:14px 16px}
+.card .v{font-size:27px;font-weight:700;letter-spacing:-.5px;line-height:1.1}
+.card .l{font-size:12px;color:var(--muted);margin-top:3px}
+.card .s{font-size:11.5px;color:var(--muted);margin-top:6px}
+.card.hl{background:linear-gradient(135deg,#1f7a3d,#155c2c);border-color:#155c2c;color:#fff}
+.card.hl .l,.card.hl .s{color:#d4ecdb}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px;margin-top:12px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:820px){.grid2{grid-template-columns:1fr}}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font-size:11.5px;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);
+  cursor:pointer;user-select:none}
+th.num,td.num{text-align:right}
+tbody tr:hover{background:#f7faf7}
+td.name{white-space:normal;min-width:160px}
+.bar{display:inline-block;height:9px;border-radius:5px;vertical-align:middle}
+.pill{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px}
+.pill.slow{background:#fbe7e4;color:#a5281b}
+.pill.fast{background:#e3f3ea;color:#1d7a42}
+.pill.on{background:#eef1ef;color:#5c675f}
+.pill.issue{background:#fff1d6;color:#8a6400}
+.daybtns{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 14px}
+.daybtn{border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 14px;
+  cursor:pointer;font-size:13px;font-weight:600;color:var(--ink)}
+.daybtn.on{background:var(--green);color:#fff;border-color:var(--green)}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:8px 0 2px}
+.legend b{color:var(--ink)}
+.swatch{display:inline-block;width:11px;height:11px;border-radius:3px;vertical-align:middle;margin-right:5px}
+svg .axis{stroke:var(--line)}
+svg text{font-size:11px;fill:var(--muted)}
+.footer{margin-top:48px;padding-top:16px;border-top:1px solid var(--line);
+  font-size:12px;color:var(--muted)}
+.scroll{overflow-x:auto}
+.refresh{font-size:12px;color:var(--green);text-decoration:none;border:1px solid var(--line);
+  border-radius:8px;padding:4px 10px;background:#fff}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>A&amp;N Mowing Numbers</h1>
+      <div class="sub">Season {{ meta.seasonStart }} &rarr; {{ meta.seasonEnd }} &middot; from Gonzalo's Jobber timecard &middot; refreshed daily 7pm CT</div>
+    </div>
+    <div class="sub" style="text-align:right">
+      Updated {{ meta.generated }}<br>
+      <a class="refresh" href="/mow-dashboard?refresh=1">&#x21bb; Refresh now</a>
+    </div>
+  </header>
+
+  <div class="note">Clock data is ~85% accurate, so every "typical" figure is a <b>median</b> (outliers removed), which shrugs off bad clock-ins. <b>{{ meta.totalFlagged }}</b> obvious junk mows (forgot-to-clock-out, accidental taps) were pulled out of the math. Strong directional numbers, not stopwatch-exact.</div>
+
+  <div class="cards" id="cards"></div>
+
+  <h2 class="sec">Where the day goes <span class="tag">per day of week</span></h2>
+  <p class="lead">Each mow day's typical mowing time vs the target pace. The red number is <b>slack</b> &mdash; hours you'd save that day if every house hit its target. Add it up and it's about {{ meta.weeklySlackH }} h a week.</p>
+  <div class="panel" id="daycap"></div>
+
+  <h2 class="sec">Houses taking the longest, by day <span class="tag">sortable</span></h2>
+  <p class="lead">Pick a day. Houses are sorted longest-first by their typical time. <b>Slack</b> = typical minus target = how much that house routinely runs over what it could. Click any column header to re-sort.</p>
+  <div class="daybtns" id="daybtns"></div>
+  <p class="lead" id="daysum" style="margin-top:0"></p>
+  <div class="panel scroll"><div id="daytable"></div></div>
+
+  <div class="grid2">
+    <div>
+      <h2 class="sec">Biggest time-savers <span class="tag">top 20</span></h2>
+      <p class="lead">Where you're leaving the most time on the table, season-wide. <b>Best</b> proves it can be done faster.</p>
+      <div class="panel scroll"><div id="slacktable"></div></div>
+    </div>
+    <div>
+      <h2 class="sec">Longest houses <span class="tag">time hogs</span></h2>
+      <p class="lead">Your heaviest lawns by typical minutes. These set the ceiling on a route's length.</p>
+      <div class="panel scroll"><div id="longtable"></div></div>
+    </div>
+  </div>
+
+  <h2 class="sec">Least predictable houses <span class="tag">spread</span></h2>
+  <p class="lead">Fastest to slowest range per house. A wide bar means the time swings a lot week to week &mdash; access, parking, trimming, or just messy clock-ins. Worth a look.</p>
+  <div class="panel" id="consist"></div>
+
+  <h2 class="sec">Week by week <span class="tag">full season</span></h2>
+  <p class="lead">Green bars are total mowing hours that week. The amber line is minutes per house &mdash; your efficiency trend. Lower line = tighter operation.</p>
+  <div class="panel" id="weekchart"></div>
+
+  <div id="drillwrap">
+    <h2 class="sec">Single-day drilldown <span class="tag">detailed clock log</span></h2>
+    <p class="lead">Pick a date to see exactly who ran slow or fast that day, straight from the clock-in/out log.</p>
+    <p class="lead" style="margin-top:0"><select id="drillsel" style="padding:6px 10px;border-radius:8px;border:1px solid var(--line);font-size:14px"></select></p>
+    <p class="lead" id="drillsum" style="margin-top:4px"></p>
+    <div class="panel scroll"><div id="drilltable"></div></div>
+  </div>
+
+  <div class="footer">
+    Source: Gonzalo's Jobber timecard ({{ meta.mowDays }} mow days, {{ meta.houseCount }} houses, {{ meta.totalMows }} mows).
+    Only Gonzalo's clock is pulled, so Jonathan mowing alongside doesn't double-count the time.
+    Typical = median normal time &middot; Target = average of the 3 fastest clean mows (a proven pace) &middot; Best = fastest logged &middot; Slack = Typical &minus; Target.
+  </div>
+</div>
+
+<script>const DATA = {{ data_json|safe }};</script>
+<script>
+const D = DATA;
+const $ = (s,el=document)=>el.querySelector(s);
+const fmt = (n,d=1)=> (n==null?'-':Number(n).toFixed(d));
+const dayName = {Mon:'Monday',Tue:'Tuesday',Wed:'Wednesday',Thu:'Thursday',Fri:'Friday',Sat:'Saturday',Sun:'Sunday'};
+const DOW = D.dayCapacity.map(c=>c.day);
+
+function prettyDate(iso){
+  const [y,m,d]=iso.split('-').map(Number);
+  const mn=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return mn[m-1]+' '+d;
+}
+
+function makeTable(host, cols, rows, opts={}){
+  const t=document.createElement('table');
+  const thead=document.createElement('thead');
+  const htr=document.createElement('tr');
+  cols.forEach((c,ci)=>{
+    const th=document.createElement('th');
+    th.textContent=c.label;
+    if(c.num) th.className='num';
+    th.onclick=()=>sortBy(ci);
+    htr.appendChild(th);
+  });
+  thead.appendChild(htr); t.appendChild(thead);
+  const tb=document.createElement('tbody'); t.appendChild(tb);
+  let sortCol = opts.sortCol!=null?opts.sortCol:null, dir=opts.dir||-1;
+  function render(){
+    tb.innerHTML='';
+    let rs=rows.slice();
+    if(sortCol!=null){
+      const c=cols[sortCol];
+      rs.sort((a,b)=>{
+        let av=c.val(a), bv=c.val(b);
+        if(typeof av==='string') return dir*av.localeCompare(bv);
+        return dir*((av||0)-(bv||0));
+      });
+    }
+    rs.forEach(r=>{
+      const tr=document.createElement('tr');
+      cols.forEach(c=>{
+        const td=document.createElement('td');
+        if(c.num) td.className='num';
+        if(c.name) td.className='name';
+        const cell=c.cell?c.cell(r):c.val(r);
+        if(cell instanceof Node) td.appendChild(cell); else td.innerHTML=cell;
+        tr.appendChild(td);
+      });
+      tb.appendChild(tr);
+    });
+  }
+  function sortBy(ci){ if(sortCol===ci) dir=-dir; else {sortCol=ci; dir=cols[ci].num?-1:1;} render(); }
+  render();
+  host.innerHTML=''; host.appendChild(t);
+}
+
+function statusPill(h){
+  if(h.flagged>0 && h.mows<=2) return '<span class="pill issue">thin data</span>';
+  if(h.slack>=6) return '<span class="pill slow">big slack</span>';
+  if(h.slack>=3) return '<span class="pill slow">slow</span>';
+  if(h.slack>=1.2) return '<span class="pill on">slight</span>';
+  return '<span class="pill fast">tight</span>';
+}
+function slackBar(v,max){
+  const w=Math.max(2,Math.round(120*v/max));
+  return '<span class="bar" style="width:'+w+'px;background:'+(v>=6?'#c0392b':v>=3?'#e0a106':'#2a9d54')+'"></span> '+fmt(v)+'m';
+}
+
+function cards(){
+  const m=D.meta;
+  const items=[
+    {v:fmt(m.medianTypical,1)+'<span style="font-size:14px"> min</span>',l:'Median time per mow',s:'half the houses faster, half slower'},
+    {v:fmt(m.meanMin,1)+'<span style="font-size:14px"> min</span>',l:'Average time per mow',s:m.totalMows+' mows tracked'},
+    {v:m.weeklySlackH+'<span style="font-size:14px"> h</span>',l:'Slack per week',s:'time routinely left on the table',hl:true},
+    {v:m.houseCount,l:'Houses tracked',s:m.mowDays+' mow days this season'},
+    {v:m.totalMowHours+'<span style="font-size:14px"> h</span>',l:'Total mow time',s:m.totalTravelHours+' h travel ('+m.travelPct+'% of wheels-on time)'},
+    {v:m.totalFlagged,l:'Outlier mows excluded',s:'clock fumbles & forgot-to-clock-out'},
+  ];
+  $('#cards').innerHTML=items.map(i=>
+    '<div class="card'+(i.hl?' hl':'')+'"><div class="v">'+i.v+'</div><div class="l">'+i.l+'</div><div class="s">'+i.s+'</div></div>'
+  ).join('');
+}
+
+function dayCapacity(){
+  const rows=D.dayCapacity;
+  if(!rows.length){ $('#daycap').innerHTML='<p class="lead">No day data yet.</p>'; return; }
+  const max=Math.max(...rows.map(r=>r.typicalH))*1.1||1;
+  const W=560,H=240,padL=34,padB=26,padT=10,bw=46,gap=(W-padL)/rows.length;
+  let s='<svg viewBox="0 0 '+W+' '+H+'" width="100%">';
+  for(let g=0;g<=Math.ceil(max);g+=2){
+    const y=padT+(H-padT-padB)*(1-g/max);
+    s+='<line class="axis" x1="'+padL+'" y1="'+y+'" x2="'+W+'" y2="'+y+'"/>';
+    s+='<text x="'+(padL-6)+'" y="'+(y+3)+'" text-anchor="end">'+g+'</text>';
+  }
+  rows.forEach((r,i)=>{
+    const x=padL+gap*i+gap/2;
+    const yT=padT+(H-padT-padB)*(1-r.typicalH/max);
+    const yG=padT+(H-padT-padB)*(1-r.targetH/max);
+    const base=H-padB;
+    s+='<rect x="'+(x-bw/2)+'" y="'+yT+'" width="'+bw+'" height="'+(base-yT)+'" rx="3" fill="#cfe3d6"/>';
+    s+='<rect x="'+(x-bw/2)+'" y="'+yG+'" width="'+bw+'" height="'+(base-yG)+'" rx="3" fill="#1f7a3d"/>';
+    s+='<text x="'+x+'" y="'+(yT-5)+'" text-anchor="middle" style="fill:#c0392b;font-weight:600">+'+fmt(r.slackH,1)+'h</text>';
+    s+='<text x="'+x+'" y="'+(base+15)+'" text-anchor="middle" style="fill:#1d2b22;font-weight:600">'+dayName[r.day]+'</text>';
+    s+='<text x="'+x+'" y="'+(base+25)+'" text-anchor="middle">'+r.props+' houses</text>';
+  });
+  s+='</svg>';
+  $('#daycap').innerHTML=s+
+   '<div class="legend"><span><span class="swatch" style="background:#1f7a3d"></span><b>Target</b> hours</span>'+
+   '<span><span class="swatch" style="background:#cfe3d6"></span><b>Typical</b> hours</span>'+
+   '<span><span class="swatch" style="background:#c0392b"></span><b>Slack</b> = time you could save</span></div>';
+}
+
+function dayBreakdown(){
+  const btns=$('#daybtns');
+  function draw(day){
+    [...btns.children].forEach(b=>b.classList.toggle('on',b.dataset.d===day));
+    const rows=D.houses.filter(h=>h.day===day);
+    const maxSlack=Math.max(...D.houses.map(h=>h.slack),1);
+    makeTable($('#daytable'),[
+      {label:'House',name:true,val:h=>h.client,cell:h=>'<b>'+h.client+'</b><br><span style="color:#6b7770;font-size:12px">'+h.property+'</span>'},
+      {label:'Typical',num:true,val:h=>h.typical,cell:h=>'<b>'+fmt(h.typical)+'</b>'},
+      {label:'Target',num:true,val:h=>h.target,cell:h=>fmt(h.target)},
+      {label:'Best',num:true,val:h=>h.best,cell:h=>fmt(h.best)},
+      {label:'Slack',num:true,val:h=>h.slack,cell:h=>slackBar(h.slack,maxSlack)},
+      {label:'Mows',num:true,val:h=>h.mows},
+      {label:'Status',val:h=>h.slack,cell:h=>statusPill(h)},
+    ],rows,{sortCol:1,dir:-1});
+    const tot=rows.reduce((a,h)=>a+h.slack,0);
+    $('#daysum').innerHTML='<b>'+dayName[day]+'</b>: '+rows.length+' houses, typically '+
+      fmt(rows.reduce((a,h)=>a+h.typical,0)/60,1)+' h of mowing, ~'+fmt(tot/60,1)+
+      ' h of slack if every house hit its target pace. Sorted longest first.';
+  }
+  DOW.forEach(d=>{
+    const b=document.createElement('button');b.className='daybtn';b.dataset.d=d;
+    b.textContent=dayName[d];b.onclick=()=>draw(d);btns.appendChild(b);
+  });
+  draw(DOW.includes('Wed')?'Wed':DOW[0]);
+}
+
+function slackBoard(){
+  const rows=D.houses.filter(h=>h.mows>=4).slice(0,20);
+  const maxSlack=Math.max(...rows.map(h=>h.slack),1);
+  makeTable($('#slacktable'),[
+    {label:'House',name:true,val:h=>h.client,cell:h=>'<b>'+h.client+'</b><br><span style="color:#6b7770;font-size:12px">'+h.property+'</span>'},
+    {label:'Day',val:h=>h.day,cell:h=>dayName[h.day]||h.day},
+    {label:'Typical',num:true,val:h=>h.typical},
+    {label:'Target',num:true,val:h=>h.target},
+    {label:'Best',num:true,val:h=>h.best,cell:h=>'<span style="color:#2a9d54">'+fmt(h.best)+'</span>'},
+    {label:'Slack',num:true,val:h=>h.slack,cell:h=>slackBar(h.slack,maxSlack)},
+  ],rows,{sortCol:5,dir:-1});
+}
+
+function longest(){
+  const rows=D.houses.filter(h=>h.mows>=4).slice().sort((a,b)=>b.typical-a.typical).slice(0,20);
+  const maxT=Math.max(...rows.map(h=>h.typical),1);
+  makeTable($('#longtable'),[
+    {label:'House',name:true,val:h=>h.client,cell:h=>'<b>'+h.client+'</b><br><span style="color:#6b7770;font-size:12px">'+h.property+'</span>'},
+    {label:'Day',val:h=>h.day,cell:h=>dayName[h.day]||h.day},
+    {label:'Typical',num:true,val:h=>h.typical,cell:h=>{
+      const w=Math.round(110*h.typical/maxT);
+      return '<span class="bar" style="width:'+w+'px;background:#2a7ab0"></span> <b>'+fmt(h.typical)+'</b>';}},
+    {label:'Avg',num:true,val:h=>h.avg},
+    {label:'Range',val:h=>h.slowest-h.fastest,cell:h=>fmt(h.fastest)+'-'+fmt(h.slowest)},
+    {label:'Total h',num:true,val:h=>h.totalHours,cell:h=>fmt(h.totalHours,2)},
+  ],rows,{sortCol:2,dir:-1});
+}
+
+function consistency(){
+  const rows=D.houses.filter(h=>h.mows>=5).slice()
+     .sort((a,b)=>(b.slowest-b.fastest)-(a.slowest-a.fastest)).slice(0,14);
+  if(!rows.length){ $('#consist').innerHTML='<p class="lead">Not enough repeat visits yet.</p>'; return; }
+  const maxV=Math.max(...rows.map(h=>h.slowest))||1;
+  const W=560,rowH=24,padL=150,H=rows.length*rowH+24;
+  let s='<svg viewBox="0 0 '+W+' '+H+'" width="100%">';
+  rows.forEach((h,i)=>{
+    const y=i*rowH+16;
+    const x1=padL+(W-padL-20)*(h.fastest/maxV);
+    const x2=padL+(W-padL-20)*(h.slowest/maxV);
+    const xa=padL+(W-padL-20)*(h.avg/maxV);
+    s+='<text x="'+(padL-8)+'" y="'+(y+4)+'" text-anchor="end" style="fill:#1d2b22">'+
+       (h.client.length>18?h.client.slice(0,17)+'…':h.client)+'</text>';
+    s+='<line x1="'+x1+'" y1="'+y+'" x2="'+x2+'" y2="'+y+'" stroke="#cfe3d6" stroke-width="6" stroke-linecap="round"/>';
+    s+='<circle cx="'+x1+'" cy="'+y+'" r="3.5" fill="#2a9d54"/>';
+    s+='<circle cx="'+x2+'" cy="'+y+'" r="3.5" fill="#c0392b"/>';
+    s+='<circle cx="'+xa+'" cy="'+y+'" r="3.5" fill="#1d2b22"/>';
+  });
+  s+='</svg>';
+  $('#consist').innerHTML=s+
+    '<div class="legend"><span><span class="swatch" style="background:#2a9d54"></span>Fastest</span>'+
+    '<span><span class="swatch" style="background:#1d2b22"></span>Average</span>'+
+    '<span><span class="swatch" style="background:#c0392b"></span>Slowest</span>'+
+    '<span style="color:#6b7770">widest spread = least predictable</span></div>';
+}
+
+function weekly(){
+  const rows=D.weekly;
+  if(!rows.length){ $('#weekchart').innerHTML='<p class="lead">No weekly data yet.</p>'; return; }
+  const W=600,H=250,padL=34,padB=40,padT=12;
+  const maxH=Math.max(...rows.map(r=>r.mowH))*1.1||1;
+  const gap=(W-padL)/rows.length;
+  let s='<svg viewBox="0 0 '+W+' '+H+'" width="100%">';
+  for(let g=0;g<=Math.ceil(maxH);g+=10){
+    const y=padT+(H-padT-padB)*(1-g/maxH);
+    s+='<line class="axis" x1="'+padL+'" y1="'+y+'" x2="'+W+'" y2="'+y+'"/>';
+    s+='<text x="'+(padL-6)+'" y="'+(y+3)+'" text-anchor="end">'+g+'h</text>';
+  }
+  rows.forEach((r,i)=>{
+    const x=padL+gap*i+gap/2;
+    const y=padT+(H-padT-padB)*(1-r.mowH/maxH);
+    const base=H-padB;
+    s+='<rect x="'+(x-13)+'" y="'+y+'" width="26" height="'+(base-y)+'" rx="3" fill="#1f7a3d"/>';
+    s+='<text x="'+x+'" y="'+(base+14)+'" text-anchor="middle">'+r.label+'</text>';
+    s+='<text x="'+x+'" y="'+(base+26)+'" text-anchor="middle" style="fill:#6b7770">'+r.props+' mows</text>';
+  });
+  const maxMP=Math.max(...rows.map(r=>r.minPerProp))*1.15||1;
+  let pts=rows.map((r,i)=>{
+    const x=padL+gap*i+gap/2;
+    const y=padT+(H-padT-padB)*(1-r.minPerProp/maxMP);
+    return [x,y];
+  });
+  s+='<polyline fill="none" stroke="#e0a106" stroke-width="2.5" points="'+
+     pts.map(p=>p[0]+','+p[1]).join(' ')+'"/>';
+  pts.forEach((p,i)=>{ s+='<circle cx="'+p[0]+'" cy="'+p[1]+'" r="3" fill="#e0a106"/>';
+     s+='<text x="'+p[0]+'" y="'+(p[1]-7)+'" text-anchor="middle" style="fill:#b07f04;font-weight:600">'+fmt(rows[i].minPerProp,0)+'</text>';});
+  s+='</svg>';
+  $('#weekchart').innerHTML=s+
+    '<div class="legend"><span><span class="swatch" style="background:#1f7a3d"></span><b>Total mow hours</b> that week</span>'+
+    '<span><span class="swatch" style="background:#e0a106"></span><b>Minutes per house</b> (efficiency, lower=better)</span></div>';
+}
+
+function drilldown(){
+  if(!D.segDates.length){ $('#drillwrap').style.display='none'; return; }
+  const sel=$('#drillsel');
+  D.segDates.forEach(d=>{ const o=document.createElement('option');o.value=d;o.textContent=prettyDate(d);sel.appendChild(o);});
+  function draw(date){
+    const rows=D.segByDate[date];
+    const maxM=Math.max(...rows.map(r=>r.min),1);
+    makeTable($('#drilltable'),[
+      {label:'House',name:true,val:r=>r.client,cell:r=>'<b>'+r.client+'</b><br><span style="color:#6b7770;font-size:12px">'+r.property+'</span>'},
+      {label:'That day',num:true,val:r=>r.min,cell:r=>{
+        const w=Math.round(100*r.min/maxM);
+        return '<span class="bar" style="width:'+w+'px;background:#2a7ab0"></span> <b>'+fmt(r.min)+'</b>';}},
+      {label:'Typical',num:true,val:r=>r.typical,cell:r=>r.typical?fmt(r.typical):'-'},
+      {label:'vs typical',num:true,val:r=>r.delta==null?0:r.delta,cell:r=>{
+        if(r.forgot) return '<span class="pill issue">clock issue</span>';
+        if(r.delta==null) return '-';
+        const c=r.delta>3?'#c0392b':r.delta<-3?'#2a9d54':'#6b7770';
+        return '<span style="color:'+c+';font-weight:600">'+(r.delta>0?'+':'')+fmt(r.delta)+'</span>';}},
+    ],rows,{sortCol:1,dir:-1});
+    const day=rows[0]?rows[0].day:'';
+    $('#drillsum').innerHTML=rows.length+' houses mowed on '+prettyDate(date)+' ('+(dayName[day]||day)+'). Sorted longest first; "vs typical" flags who ran slow or fast that day.';
+  }
+  sel.onchange=()=>draw(sel.value);
+  draw(D.segDates[D.segDates.length-1]);
+}
+
+cards(); dayCapacity(); dayBreakdown(); slackBoard(); longest(); consistency(); weekly(); drilldown();
+</script>
+</body>
+</html>
