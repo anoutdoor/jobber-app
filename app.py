@@ -272,6 +272,60 @@ def payroll_owed():
     return _payroll_cors(resp)
 
 
+@app.route("/receivables", methods=["GET", "OPTIONS"])
+def receivables():
+    """Read-only accounts receivable for the cash position tracker. Outstanding
+    Jobber invoices aggregated per client. Same shared key (PAYROLL_API_KEY) and
+    CORS as /payroll-owed; Jobber tokens stay server-side."""
+    if request.method == "OPTIONS":
+        return _payroll_cors(app.make_response(("", 204)))
+
+    expected = (os.getenv("PAYROLL_API_KEY") or "").strip()
+    provided = (request.headers.get("X-Api-Key", "") or "").strip()
+    if not expected or not secrets.compare_digest(provided, expected):
+        resp = jsonify({"error": "unauthorized"})
+        resp.status_code = 401
+        return _payroll_cors(resp)
+
+    from datetime import date
+    from financial.compute import compute_ar
+    from financial.jobber_finance import fetch_open_invoices
+
+    invoices = fetch_open_invoices()
+    if invoices is None:
+        resp = jsonify({
+            "error": "jobber_auth",
+            "message": "Jobber token missing or expired. Reconnect jobber-app at /login.",
+        })
+        resp.status_code = 502
+        return _payroll_cors(resp)
+
+    ar = compute_ar(invoices)
+
+    # Aggregate outstanding per client across all open invoices (not just the
+    # top overdue) so the cash tracker can show the full receivables list.
+    by_client = {}
+    for inv in ar.get("invoices", []):
+        name = inv.get("client_name") or "Unknown"
+        b = by_client.setdefault(name, {"name": name, "amount": 0.0, "invoices": 0, "max_days_past_due": 0})
+        b["amount"] += inv.get("outstanding", 0) or 0
+        b["invoices"] += 1
+        b["max_days_past_due"] = max(b["max_days_past_due"], inv.get("days_past_due", 0) or 0)
+    breakdown = sorted(by_client.values(), key=lambda c: c["amount"], reverse=True)
+    for b in breakdown:
+        b["amount"] = round(b["amount"], 2)
+
+    resp = jsonify({
+        "ok": True,
+        "as_of": date.today().isoformat(),
+        "total_outstanding": ar["total_outstanding"],
+        "invoice_count": len(ar.get("invoices", [])),
+        "breakdown": breakdown,
+        "buckets": ar.get("buckets", []),
+    })
+    return _payroll_cors(resp)
+
+
 @app.route("/financial-debug")
 def financial_debug():
     """Dump raw responses from each Jobber query so we can see which ones
