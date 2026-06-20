@@ -141,6 +141,18 @@ payroll:
   # Thursday after payroll lands.
   last_payroll_paid_through: "2026-06-14"
 
+# Mow P&L model (used by /mow-dashboard). Edit rates here; the dashboard reloads
+# on its next refresh. Both crew members are on every mow, so direct labor =
+# mow hours x (sum of crew_rates) x (1 + labor_burden_pct/100). Overhead spreads
+# the crew's daily rate across that day's mows, proportional to each mow's time.
+mow_costing:
+  crew_rates:            # $/hour, both on every mow
+    Gonzalo: 28
+    Jonathan: 23
+  labor_burden_pct: 15   # payroll taxes etc. on mow wages (separate from payroll accrual's 10%)
+  crew_daily_overhead: 252   # Gonzalo crew's allocated overhead per working day
+  overhead_method: by_mow_time   # by_mow_time | even_per_stop | flat_hourly
+
 # AR aging buckets. "Current" = not yet past due (days past due <= 0).
 ar:
   aging_buckets:

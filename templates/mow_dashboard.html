@@ -31,6 +31,10 @@ p.lead{color:var(--muted);margin:4px 0 14px;font-size:13.5px;max-width:780px}
 .card .s{font-size:11.5px;color:var(--muted);margin-top:6px}
 .card.hl{background:linear-gradient(135deg,#1f7a3d,#155c2c);border-color:#155c2c;color:#fff}
 .card.hl .l,.card.hl .s{color:#d4ecdb}
+.card.neg{background:linear-gradient(135deg,#c0392b,#a5281b);border-color:#a5281b;color:#fff}
+.card.neg .l,.card.neg .s{color:#f6d8d3}
+tbody tr.loser{background:#fdf1ef}
+tbody tr.loser:hover{background:#fbe7e4}
 .panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px;margin-top:12px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 @media(max-width:820px){.grid2{grid-template-columns:1fr}}
@@ -80,6 +84,15 @@ svg text{font-size:11px;fill:var(--muted)}
 
   <div class="cards" id="cards"></div>
 
+  <h2 class="sec">The money <span class="tag">mow P&amp;L</span></h2>
+  <p class="lead">Revenue is each house's per-visit price from Jobber. Cost = labor (mow time &times; ($28 + $23) &times; 1.15 burden) plus a share of the ${{ meta.dailyOverhead|round|int }}/day crew overhead, split across the day's mows by time. <b>Labor is charged on mow time only</b> &mdash; travel and yard time aren't in here yet, so true net runs a bit lower.</p>
+  <div class="cards" id="moneycards"></div>
+
+  <h2 class="sec">Profit per house <span class="tag">makers &amp; losers</span></h2>
+  <p class="lead">Each house's per-visit price vs what it costs to mow. Sorted by <b>$/hour</b>, worst earners on top. Red = losing money once overhead's in. Click a header to re-sort by margin, profit, or price.</p>
+  <p class="lead" id="moneysum" style="margin-top:0"></p>
+  <div class="panel scroll"><div id="moneytable"></div></div>
+
   <h2 class="sec">Where the day goes <span class="tag">per day of week</span></h2>
   <p class="lead">Each mow day's typical mowing time vs the target pace. The red number is <b>slack</b> &mdash; hours you'd save that day if every house hit its target. Add it up and it's about {{ meta.weeklySlackH }} h a week.</p>
   <div class="panel" id="daycap"></div>
@@ -111,6 +124,10 @@ svg text{font-size:11px;fill:var(--muted)}
   <p class="lead">Green bars are total mowing hours that week. The amber line is minutes per house &mdash; your efficiency trend. Lower line = tighter operation.</p>
   <div class="panel" id="weekchart"></div>
 
+  <h2 class="sec">Profit by week <span class="tag">revenue &minus; cost</span></h2>
+  <p class="lead">What the mow route brought in vs what it cost each week. Green bars above the line are profit, red below is a loss.</p>
+  <div class="panel" id="weekmoney"></div>
+
   <div id="drillwrap">
     <h2 class="sec">Single-day drilldown <span class="tag">detailed clock log</span></h2>
     <p class="lead">Pick a date to see exactly who ran slow or fast that day, straight from the clock-in/out log.</p>
@@ -123,6 +140,7 @@ svg text{font-size:11px;fill:var(--muted)}
     Source: Gonzalo's Jobber timecard ({{ meta.mowDays }} mow days, {{ meta.houseCount }} houses, {{ meta.totalMows }} mows).
     Only Gonzalo's clock is pulled, so Jonathan mowing alongside doesn't double-count the time.
     Typical = median normal time &middot; Target = average of the 3 fastest clean mows (a proven pace) &middot; Best = fastest logged &middot; Slack = Typical &minus; Target.
+    <br>P&amp;L: revenue = Jobber per-visit price &middot; labor = mow hours &times; ${{ meta.crewHourly|round|int }}/hr &times; {{ (1 + meta.burdenPct/100)|round(2) }} burden &middot; overhead = ${{ meta.dailyOverhead|round|int }}/day split by mow time &middot; labor on mow time only (travel/yard excluded). Rates live in financial_config.yaml.
   </div>
 </div>
 
@@ -167,6 +185,7 @@ function makeTable(host, cols, rows, opts={}){
     }
     rs.forEach(r=>{
       const tr=document.createElement('tr');
+      if(opts.rowClass){ const rc=opts.rowClass(r); if(rc) tr.className=rc; }
       cols.forEach(c=>{
         const td=document.createElement('td');
         if(c.num) td.className='num';
@@ -195,6 +214,13 @@ function slackBar(v,max){
   return '<span class="bar" style="width:'+w+'px;background:'+(v>=6?'#c0392b':v>=3?'#e0a106':'#2a9d54')+'"></span> '+fmt(v)+'m';
 }
 
+// ---- currency helpers ----
+function usd(n){ if(n==null) return '-'; return (n<0?'-$':'$')+Math.abs(n).toLocaleString('en-US',{maximumFractionDigits:0}); }
+function usd2(n){ if(n==null) return '-'; return (n<0?'-$':'$')+Math.abs(n).toFixed(2); }
+function profitCell(v,hr){ if(v==null) return '<span style="color:#6b7770">no price</span>';
+  const c=v>=0?'#1d7a42':'#c0392b';
+  return '<span style="color:'+c+';font-weight:600">'+usd2(v)+(hr?'/h':'')+'</span>'; }
+
 function cards(){
   const m=D.meta;
   const items=[
@@ -208,6 +234,68 @@ function cards(){
   $('#cards').innerHTML=items.map(i=>
     '<div class="card'+(i.hl?' hl':'')+'"><div class="v">'+i.v+'</div><div class="l">'+i.l+'</div><div class="s">'+i.s+'</div></div>'
   ).join('');
+}
+
+function moneyCards(){
+  const m=D.meta;
+  const pos = m.profitPerWeek>=0;
+  const items=[
+    {v:usd(m.profitPerWeek),l:'Profit per week',s:'on mows, after labor + overhead',hl:pos,neg:!pos},
+    {v:fmt(m.marginPct,0)+'%',l:'Mow profit margin',s:usd(m.profit)+' total this season'},
+    {v:usd(m.medianProfit),l:'Median profit / mow',s:'typical house, per visit'},
+    {v:usd(m.revenuePerWeek),l:'Revenue per week',s:m.pricedVisits+' priced mows'},
+    {v:usd(m.slackCostPerWeek),l:'Cost of slack / week',s:'crew wages for slack time'},
+    {v:usd(m.totalCost),l:'Total mow cost',s:usd(m.laborCost)+' labor + '+usd(m.overheadCost)+' overhead'},
+  ];
+  $('#moneycards').innerHTML=items.map(i=>
+    '<div class="card'+(i.hl?' hl':'')+(i.neg?' neg':'')+'"><div class="v">'+i.v+'</div><div class="l">'+i.l+'</div><div class="s">'+i.s+'</div></div>'
+  ).join('');
+}
+
+function moneyPerHouse(){
+  const rows=D.houses.filter(h=>h.price!=null && h.mows>=3);
+  if(!rows.length){ $('#moneytable').innerHTML='<p class="lead">No priced mows yet.</p>'; return; }
+  makeTable($('#moneytable'),[
+    {label:'House',name:true,val:h=>h.client,cell:h=>'<b>'+h.client+'</b><br><span style="color:#6b7770;font-size:12px">'+h.property+'</span>'},
+    {label:'Day',val:h=>h.day,cell:h=>dayName[h.day]||h.day},
+    {label:'Price',num:true,val:h=>h.price,cell:h=>usd2(h.price)},
+    {label:'Typical',num:true,val:h=>h.typical,cell:h=>fmt(h.typical)+'m'},
+    {label:'Cost',num:true,val:h=>h.cost,cell:h=>usd2(h.cost)},
+    {label:'Profit',num:true,val:h=>h.profit,cell:h=>profitCell(h.profit)},
+    {label:'Margin',num:true,val:h=>h.margin,cell:h=>h.margin==null?'-':fmt(h.margin,0)+'%'},
+    {label:'$/hr',num:true,val:h=>h.profitPerHr,cell:h=>profitCell(h.profitPerHr,true)},
+  ],rows,{sortCol:7,dir:1,rowClass:h=>h.profit<0?'loser':''});  // $/hr ascending = worst first
+  const losers=rows.filter(h=>h.profit<0).length;
+  $('#moneysum').innerHTML='<b>'+losers+'</b> of '+rows.length+' priced houses lose money per mow once overhead is in. '+
+    'Median profit '+usd(D.meta.medianProfit)+'/mow at '+fmt(D.meta.marginPct,0)+'% margin.';
+}
+
+function weeklyMoney(){
+  const rows=D.weekly;
+  if(!rows.length){ $('#weekmoney').innerHTML='<p class="lead">No weekly P&L yet.</p>'; return; }
+  const profits=rows.map(r=>r.profit);
+  const maxP=Math.max(1,...profits.map(Math.abs));
+  const W=600,H=230,padL=44,padB=34,padT=14,mid=padT+(H-padT-padB)/2;
+  const span=(H-padT-padB)/2;
+  const gap=(W-padL)/rows.length;
+  let s='<svg viewBox="0 0 '+W+' '+H+'" width="100%">';
+  s+='<line class="axis" x1="'+padL+'" y1="'+mid+'" x2="'+W+'" y2="'+mid+'" style="stroke:#9aa7a0"/>';
+  s+='<text x="'+(padL-6)+'" y="'+(mid+3)+'" text-anchor="end">$0</text>';
+  rows.forEach((r,i)=>{
+    const x=padL+gap*i+gap/2;
+    const h=span*Math.abs(r.profit)/maxP;
+    const up=r.profit>=0;
+    const y=up?mid-h:mid;
+    s+='<rect x="'+(x-15)+'" y="'+y+'" width="30" height="'+Math.max(1,h)+'" rx="3" fill="'+(up?'#1f7a3d':'#c0392b')+'"/>';
+    s+='<text x="'+x+'" y="'+(up?y-4:y+h+12)+'" text-anchor="middle" style="fill:'+(up?'#155c2c':'#a5281b')+';font-weight:600">'+usd(r.profit)+'</text>';
+    s+='<text x="'+x+'" y="'+(H-padB+14)+'" text-anchor="middle">'+r.label+'</text>';
+    s+='<text x="'+x+'" y="'+(H-padB+25)+'" text-anchor="middle" style="fill:#6b7770">'+usd(r.revenue)+' rev</text>';
+  });
+  s+='</svg>';
+  $('#weekmoney').innerHTML=s+
+   '<div class="legend"><span><span class="swatch" style="background:#1f7a3d"></span>Profit week</span>'+
+   '<span><span class="swatch" style="background:#c0392b"></span>Loss week</span>'+
+   '<span style="color:#6b7770">bar height = $ profit; revenue noted below</span></div>';
 }
 
 function dayCapacity(){
@@ -249,15 +337,19 @@ function dayBreakdown(){
       {label:'House',name:true,val:h=>h.client,cell:h=>'<b>'+h.client+'</b><br><span style="color:#6b7770;font-size:12px">'+h.property+'</span>'},
       {label:'Typical',num:true,val:h=>h.typical,cell:h=>'<b>'+fmt(h.typical)+'</b>'},
       {label:'Target',num:true,val:h=>h.target,cell:h=>fmt(h.target)},
-      {label:'Best',num:true,val:h=>h.best,cell:h=>fmt(h.best)},
       {label:'Slack',num:true,val:h=>h.slack,cell:h=>slackBar(h.slack,maxSlack)},
-      {label:'Mows',num:true,val:h=>h.mows},
+      {label:'Price',num:true,val:h=>h.price==null?-1:h.price,cell:h=>h.price==null?'-':usd2(h.price)},
+      {label:'Profit',num:true,val:h=>h.profit==null?-9999:h.profit,cell:h=>profitCell(h.profit)},
+      {label:'$/hr',num:true,val:h=>h.profitPerHr==null?-9999:h.profitPerHr,cell:h=>profitCell(h.profitPerHr,true)},
       {label:'Status',val:h=>h.slack,cell:h=>statusPill(h)},
-    ],rows,{sortCol:1,dir:-1});
+    ],rows,{sortCol:1,dir:-1,rowClass:h=>h.profit!=null&&h.profit<0?'loser':''});
     const tot=rows.reduce((a,h)=>a+h.slack,0);
+    const priced=rows.filter(h=>h.price!=null);
+    const dayRev=priced.reduce((a,h)=>a+h.price,0);
+    const dayProfit=priced.reduce((a,h)=>a+(h.profit||0),0);
     $('#daysum').innerHTML='<b>'+dayName[day]+'</b>: '+rows.length+' houses, typically '+
       fmt(rows.reduce((a,h)=>a+h.typical,0)/60,1)+' h of mowing, ~'+fmt(tot/60,1)+
-      ' h of slack if every house hit its target pace. Sorted longest first.';
+      ' h of slack. A typical '+dayName[day]+' brings in <b>'+usd(dayRev)+'</b> for <b>'+usd(dayProfit)+'</b> profit. Sorted longest first.';
   }
   DOW.forEach(d=>{
     const b=document.createElement('button');b.className='daybtn';b.dataset.d=d;
@@ -383,7 +475,7 @@ function drilldown(){
   draw(D.segDates[D.segDates.length-1]);
 }
 
-cards(); dayCapacity(); dayBreakdown(); slackBoard(); longest(); consistency(); weekly(); drilldown();
+cards(); moneyCards(); moneyPerHouse(); dayCapacity(); dayBreakdown(); slackBoard(); longest(); consistency(); weekly(); weeklyMoney(); drilldown();
 </script>
 </body>
 </html>

@@ -217,6 +217,9 @@ query($f: TimeSheetEntriesFilterAttributes, $cursor: String) {
       job {
         jobNumber
         title
+        total
+        billingType
+        jobberWebUri
         property { address { street city } }
       }
     }
@@ -333,7 +336,15 @@ def process(entries):
             street = addr.get("street") or ""
             city = addr.get("city") or ""
             if jn and jn not in prop_info:
-                prop_info[jn] = {"client": client, "street": street, "city": city}
+                # price = per-visit charge. Mow jobs bill VISIT_BASED, so job.total
+                # is the per-visit amount (bundled "Mow and Weed" includes the weed
+                # line, which is correct: the clocked time covers the whole visit).
+                prop_info[jn] = {
+                    "client": client, "street": street, "city": city,
+                    "price": float(job.get("total") or 0) or None,
+                    "billing": job.get("billingType") or "",
+                    "web_uri": job.get("jobberWebUri") or "",
+                }
             d["mows"].append({"start": start, "end": end, "mins": mins,
                               "client": client, "job_number": jn,
                               "title": title, "street": street})
