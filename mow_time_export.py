@@ -402,7 +402,38 @@ def process(entries):
     for (jn, _date), mn in visit_min.items():
         prop_visits[jn].append(mn)
 
-    return detail, prop_visits, prop_info, day_agg
+    # Per-visit drive time: the actual logged travel (General) driving TO each
+    # house. Each between-mow General segment is charged to the next house you
+    # clock into. Morning yard time (before the first mow) and the drive back
+    # (after the last mow) are NOT here — yard is spread per stop downstream;
+    # drive-back is dropped. Sums to the day's windowed travel_min.
+    visit_drive = defaultdict(float)
+    for date_key, d in days.items():
+        mows = [m for m in d["mows"] if m["start"] and m["end"]]
+        if not mows:
+            continue
+        vstart, vend = {}, {}
+        for m in mows:
+            k = m["job_number"]
+            if k not in vstart or m["start"] < vstart[k]:
+                vstart[k] = m["start"]
+            if k not in vend or m["end"] > vend[k]:
+                vend[k] = m["end"]
+        visits = sorted(vstart, key=lambda k: vstart[k])
+        win_start, win_end = vstart[visits[0]], max(vend.values())
+        for g in d["generals"]:
+            gs, ge = g["start"], g["end"]
+            if not gs or not ge:
+                continue
+            cs = max(gs, win_start)
+            ce = min(ge, win_end)
+            mins = (ce - cs).total_seconds() / 60.0
+            if mins <= 0:        # morning yard or drive-back — excluded here
+                continue
+            target = next((k for k in visits if vstart[k] >= cs), visits[-1])
+            visit_drive[(target, date_key)] += mins
+
+    return detail, prop_visits, prop_info, day_agg, dict(visit_drive)
 
 
 # ---------------------------------------------------------------------------
@@ -797,7 +828,7 @@ def gather_mow_data():
     entries = fetch_gonzalo_entries(client)
     print(f"[fetched {len(entries)} total Gonzalo timesheet entries]")
 
-    detail, prop_visits, prop_info, day_agg = process(entries)
+    detail, prop_visits, prop_info, day_agg, visit_drive = process(entries)
     compute_flags(detail)
     clean_prop_visits, excl_count, n_excluded = apply_exclusions(detail, day_agg)
     props, day_rollup = compute_standards(detail)
@@ -811,6 +842,7 @@ def gather_mow_data():
         "clean_prop_visits": clean_prop_visits,
         "prop_info": prop_info,
         "day_agg": day_agg,
+        "visit_drive": visit_drive,
         "props": props,
         "day_rollup": day_rollup,
         "excl_count": excl_count,

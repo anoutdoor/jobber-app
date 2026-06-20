@@ -85,7 +85,7 @@ svg text{font-size:11px;fill:var(--muted)}
   <div class="cards" id="cards"></div>
 
   <h2 class="sec">The money <span class="tag">mow P&amp;L</span></h2>
-  <p class="lead">Revenue is each house's per-visit price from Jobber. Cost = labor (mow time &times; ($28 + $23) &times; 1.15 burden) plus a share of the ${{ meta.dailyOverhead|round|int }}/day crew overhead, split across the day's mows by time. <b>Labor is charged on mow time only</b> &mdash; travel and yard time aren't in here yet, so true net runs a bit lower.</p>
+  <p class="lead">Revenue is each house's per-visit price from Jobber. Cost = <b>mow labor</b> + <b>drive labor</b> (the actual logged drive to each house, plus an even share of the morning load/drive-out) + a share of the ${{ meta.dailyOverhead|round|int }}/day crew overhead. All labor at ($28 + $23) &times; 1.15 burden. Both guys on every mow. The drive-back to the yard isn't charged.</p>
   <div class="cards" id="moneycards"></div>
 
   <h2 class="sec">Profit per house <span class="tag">makers &amp; losers</span></h2>
@@ -140,7 +140,7 @@ svg text{font-size:11px;fill:var(--muted)}
     Source: Gonzalo's Jobber timecard ({{ meta.mowDays }} mow days, {{ meta.houseCount }} houses, {{ meta.totalMows }} mows).
     Only Gonzalo's clock is pulled, so Jonathan mowing alongside doesn't double-count the time.
     Typical = median normal time &middot; Target = average of the 3 fastest clean mows (a proven pace) &middot; Best = fastest logged &middot; Slack = Typical &minus; Target.
-    <br>P&amp;L: revenue = Jobber per-visit price &middot; labor = mow hours &times; ${{ meta.crewHourly|round|int }}/hr &times; {{ (1 + meta.burdenPct/100)|round(2) }} burden &middot; overhead = ${{ meta.dailyOverhead|round|int }}/day split by mow time &middot; labor on mow time only (travel/yard excluded). Rates live in financial_config.yaml.
+    <br>P&amp;L: revenue = Jobber per-visit price &middot; labor = (mow + drive + morning yard) hours &times; ${{ meta.crewHourly|round|int }}/hr &times; {{ (1 + meta.burdenPct/100)|round(2) }} burden &middot; drive = actual logged travel to each house, yard split per stop, drive-back excluded &middot; overhead = ${{ meta.dailyOverhead|round|int }}/day split by mow time. Rates live in financial_config.yaml.
   </div>
 </div>
 
@@ -244,8 +244,8 @@ function moneyCards(){
     {v:fmt(m.marginPct,0)+'%',l:'Mow profit margin',s:usd(m.profit)+' total this season'},
     {v:usd(m.medianProfit),l:'Median profit / mow',s:'typical house, per visit'},
     {v:usd(m.revenuePerWeek),l:'Revenue per week',s:m.pricedVisits+' priced mows'},
-    {v:usd(m.slackCostPerWeek),l:'Cost of slack / week',s:'crew wages for slack time'},
-    {v:usd(m.totalCost),l:'Total mow cost',s:usd(m.laborCost)+' labor + '+usd(m.overheadCost)+' overhead'},
+    {v:usd(m.driveCost),l:'Drive + yard cost',s:'crew wages for driving the route'},
+    {v:usd(m.totalCost),l:'Total mow cost',s:usd(m.laborCost)+' mow + '+usd(m.driveCost)+' drive + '+usd(m.overheadCost)+' oh'},
   ];
   $('#moneycards').innerHTML=items.map(i=>
     '<div class="card'+(i.hl?' hl':'')+(i.neg?' neg':'')+'"><div class="v">'+i.v+'</div><div class="l">'+i.l+'</div><div class="s">'+i.s+'</div></div>'
@@ -259,14 +259,15 @@ function moneyPerHouse(){
     {label:'House',name:true,val:h=>h.client,cell:h=>'<b>'+h.client+'</b><br><span style="color:#6b7770;font-size:12px">'+h.property+'</span>'},
     {label:'Day',val:h=>h.day,cell:h=>dayName[h.day]||h.day},
     {label:'Price',num:true,val:h=>h.price,cell:h=>usd2(h.price)},
-    {label:'Typical',num:true,val:h=>h.typical,cell:h=>fmt(h.typical)+'m'},
+    {label:'Mow',num:true,val:h=>h.typical,cell:h=>fmt(h.typical)+'m'},
+    {label:'Drive',num:true,val:h=>h.driveMin,cell:h=>h.driveMin==null?'-':fmt(h.driveMin)+'m'},
     {label:'Cost',num:true,val:h=>h.cost,cell:h=>usd2(h.cost)},
     {label:'Profit',num:true,val:h=>h.profit,cell:h=>profitCell(h.profit)},
     {label:'Margin',num:true,val:h=>h.margin,cell:h=>h.margin==null?'-':fmt(h.margin,0)+'%'},
     {label:'$/hr',num:true,val:h=>h.profitPerHr,cell:h=>profitCell(h.profitPerHr,true)},
-  ],rows,{sortCol:7,dir:1,rowClass:h=>h.profit<0?'loser':''});  // $/hr ascending = worst first
+  ],rows,{sortCol:8,dir:1,rowClass:h=>h.profit<0?'loser':''});  // $/hr ascending = worst first
   const losers=rows.filter(h=>h.profit<0).length;
-  $('#moneysum').innerHTML='<b>'+losers+'</b> of '+rows.length+' priced houses lose money per mow once overhead is in. '+
+  $('#moneysum').innerHTML='<b>'+losers+'</b> of '+rows.length+' priced houses lose money per visit once drive time and overhead are in. '+
     'Median profit '+usd(D.meta.medianProfit)+'/mow at '+fmt(D.meta.marginPct,0)+'% margin.';
 }
 

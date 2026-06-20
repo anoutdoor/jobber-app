@@ -64,14 +64,16 @@ def load_cost_model():
 
 # ---------------------------------------------------------------------------
 # P&L per mow visit
-#   labor    = mow hours x (sum of crew wages) x (1 + burden)
-#   overhead = crew daily overhead, split across that day's mows by mow time
-#   revenue  = the job's per-visit price (job.total, VISIT_BASED billing)
-#   profit   = revenue - labor - overhead
+#   mow labor  = mow hours x (sum of crew wages) x (1 + burden)
+#   drive labor= (actual logged drive TO the house + an even share of the day's
+#                 morning yard/load time) x the same loaded rate
+#   overhead   = crew daily overhead, split across that day's mows by mow time
+#   revenue    = the job's per-visit price (job.total, VISIT_BASED billing)
+#   profit     = revenue - mow labor - drive labor - overhead
 # Excludes the same short/long outlier visits the summaries exclude. Visits
 # with no price (price = None) are costed but left out of revenue/profit/margin.
 # ---------------------------------------------------------------------------
-def compute_pnl(detail, prop_info, cost):
+def compute_pnl(detail, prop_info, cost, day_agg, visit_drive):
     excluded = {(r["job_number"], r["date"]) for r in detail
                 if r.get("flag_kind") in ("short", "long")}
     visit_min = collections.defaultdict(float)   # (jn, date) -> minutes
@@ -89,6 +91,13 @@ def compute_pnl(detail, prop_info, cost):
         day_min[d] += m
         day_stops[d] += 1
 
+    # morning yard/load minutes per day = clock-in to first mow, spread evenly
+    # across that day's mowed houses (it's route setup, not any one house's fault)
+    yard_min = {}
+    for d, a in day_agg.items():
+        first, fmow = a.get("first"), a.get("first_mow")
+        yard_min[d] = (fmow - first).total_seconds() / 60.0 if (first and fmow) else 0.0
+
     loaded = cost["loaded_hourly"]
     ovh = cost["daily_overhead"]
     method = cost["method"]
@@ -101,16 +110,18 @@ def compute_pnl(detail, prop_info, cost):
         return ovh * (m / day_min[d]) if day_min[d] else 0.0   # by_mow_time
 
     house = collections.defaultdict(lambda: {
-        "n": 0, "priced_n": 0, "minutes": 0.0, "revenue": 0.0,
-        "labor": 0.0, "overhead": 0.0})
+        "n": 0, "priced_n": 0, "minutes": 0.0, "driveMin": 0.0, "revenue": 0.0,
+        "mowLabor": 0.0, "driveLabor": 0.0, "overhead": 0.0})
     day = collections.defaultdict(lambda: {
-        "revenue": 0.0, "labor": 0.0, "overhead": 0.0, "priced": 0})
+        "revenue": 0.0, "mowLabor": 0.0, "driveLabor": 0.0, "overhead": 0.0, "priced": 0})
     visit_profits = []
-    season = {"revenue": 0.0, "labor": 0.0, "overhead": 0.0, "priced": 0}
+    season = {"revenue": 0.0, "mowLabor": 0.0, "driveLabor": 0.0, "overhead": 0.0, "priced": 0}
 
     for (jn, d), m in visit_min.items():
         hrs = m / 60.0
-        labor = hrs * loaded
+        mow_labor = hrs * loaded
+        drive_m = visit_drive.get((jn, d), 0.0) + (yard_min.get(d, 0.0) / day_stops[d] if day_stops[d] else 0.0)
+        drive_labor = (drive_m / 60.0) * loaded
         overhead = overhead_for(jn, d, m)
         info = prop_info.get(jn, {})
         price = info.get("price")
@@ -119,16 +130,20 @@ def compute_pnl(detail, prop_info, cost):
         h = house[key]
         h["n"] += 1
         h["minutes"] += m
-        h["labor"] += labor
+        h["driveMin"] += drive_m
+        h["mowLabor"] += mow_labor
+        h["driveLabor"] += drive_labor
         h["overhead"] += overhead
         dd = day[d]
-        dd["labor"] += labor
+        dd["mowLabor"] += mow_labor
+        dd["driveLabor"] += drive_labor
         dd["overhead"] += overhead
-        season["labor"] += labor
+        season["mowLabor"] += mow_labor
+        season["driveLabor"] += drive_labor
         season["overhead"] += overhead
 
         if price is not None:
-            profit = price - labor - overhead
+            profit = price - mow_labor - drive_labor - overhead
             h["priced_n"] += 1
             h["revenue"] += price
             dd["revenue"] += price
@@ -141,14 +156,17 @@ def compute_pnl(detail, prop_info, cost):
     house_pnl = {}
     for key, h in house.items():
         hrs = h["minutes"] / 60.0
-        cost_total = h["labor"] + h["overhead"]
+        labor = h["mowLabor"] + h["driveLabor"]
+        cost_total = labor + h["overhead"]
         priced = h["priced_n"]
         rev = h["revenue"]
         profit = rev - cost_total if priced else None
         house_pnl[key] = {
             "price": round(rev / priced, 2) if priced else None,
             "avgCost": round(cost_total / h["n"], 2) if h["n"] else 0,
-            "avgLabor": round(h["labor"] / h["n"], 2) if h["n"] else 0,
+            "avgLabor": round(h["mowLabor"] / h["n"], 2) if h["n"] else 0,
+            "avgDrive": round(h["driveLabor"] / h["n"], 2) if h["n"] else 0,
+            "avgDriveMin": round(h["driveMin"] / h["n"], 1) if h["n"] else 0,
             "avgOverhead": round(h["overhead"] / h["n"], 2) if h["n"] else 0,
             "avgProfit": round(profit / priced, 2) if priced else None,
             "marginPct": round(100 * profit / rev, 1) if priced and rev else None,
@@ -160,21 +178,24 @@ def compute_pnl(detail, prop_info, cost):
 
     day_pnl = {}
     for d, x in day.items():
-        c = x["labor"] + x["overhead"]
+        c = x["mowLabor"] + x["driveLabor"] + x["overhead"]
         p = x["revenue"] - c if x["priced"] else None
         day_pnl[d] = {
             "revenue": round(x["revenue"], 2),
-            "labor": round(x["labor"], 2),
+            "labor": round(x["mowLabor"], 2),
+            "drive": round(x["driveLabor"], 2),
             "overhead": round(x["overhead"], 2),
             "cost": round(c, 2),
             "profit": round(p, 2) if p is not None else None,
         }
 
-    s_cost = season["labor"] + season["overhead"]
+    s_labor = season["mowLabor"] + season["driveLabor"]
+    s_cost = s_labor + season["overhead"]
     s_profit = season["revenue"] - s_cost
     season_out = {
         "revenue": round(season["revenue"], 2),
-        "labor": round(season["labor"], 2),
+        "labor": round(season["mowLabor"], 2),
+        "driveLabor": round(season["driveLabor"], 2),
         "overhead": round(season["overhead"], 2),
         "cost": round(s_cost, 2),
         "profit": round(s_profit, 2),
@@ -201,7 +222,7 @@ def build_payload(g):
 
     # --- P&L per visit/house/day (revenue from Jobber price, cost from config) ---
     cost = load_cost_model()
-    pnl = compute_pnl(detail, prop_info, cost)
+    pnl = compute_pnl(detail, prop_info, cost, day_agg, g.get("visit_drive", {}))
     house_pnl = pnl["house"]   # (client, street) -> aggregated P&L
 
     # --- per-property stats keyed by (client, street) so we can join to props ---
@@ -238,7 +259,8 @@ def build_payload(g):
         typ_profit = None
         if price is not None:
             typ_labor = typ_hrs * cost["loaded_hourly"]
-            typ_profit = round(price - typ_labor - (pl.get("avgOverhead") or 0), 2)
+            typ_profit = round(price - typ_labor - (pl.get("avgDrive") or 0)
+                               - (pl.get("avgOverhead") or 0), 2)
         houses.append({
             "client": p["client"],
             "property": p["prop"],
@@ -257,6 +279,8 @@ def build_payload(g):
             "price": price,
             "cost": pl.get("avgCost"),
             "labor": pl.get("avgLabor"),
+            "drive": pl.get("avgDrive"),
+            "driveMin": pl.get("avgDriveMin"),
             "overhead": pl.get("avgOverhead"),
             "profit": pl.get("avgProfit"),
             "typProfit": typ_profit,
@@ -363,6 +387,7 @@ def build_payload(g):
         # --- P&L headline ---
         "revenue": season["revenue"],
         "laborCost": season["labor"],
+        "driveCost": season["driveLabor"],
         "overheadCost": season["overhead"],
         "totalCost": season["cost"],
         "profit": season["profit"],
