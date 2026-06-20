@@ -85,16 +85,16 @@ svg text{font-size:11px;fill:var(--muted)}
   <div class="cards" id="cards"></div>
 
   <h2 class="sec">The money <span class="tag">mow P&amp;L</span></h2>
-  <p class="lead">Revenue is each house's per-visit price from Jobber. Cost = <b>mow labor</b> + <b>drive labor</b> (the actual logged drive to each house, plus an even share of the morning load/drive-out) + a share of the ${{ meta.dailyOverhead|round|int }}/day crew overhead. All labor at ($28 + $23) &times; 1.15 burden. Both guys on every mow. The drive-back to the yard isn't charged.</p>
+  <p class="lead">Revenue is each house's per-visit price from Jobber. Each house's profit below is <b>price &minus; mow labor &minus; a share of the ${{ meta.dailyOverhead|round|int }}/day overhead</b>. The crew's between-stop time (driving plus the morning load/drive-out) is a real cost, but the timecard gaps are too noisy to pin on one house, so it's carried as <b>one route-level cost</b>, shown below in The money cards and in Tighten the day. Labor at ($28 + $23) &times; 1.15 burden, both guys on every mow.</p>
   <div class="cards" id="moneycards"></div>
 
   <h2 class="sec">Profit per house <span class="tag">makers &amp; losers</span></h2>
-  <p class="lead">Each house's per-visit price vs what it costs to mow. Sorted by <b>$/hour</b>, worst earners on top. Red = losing money once overhead's in. Click a header to re-sort by margin, profit, or price.</p>
+  <p class="lead">Each house's per-visit price vs its <b>mow</b> cost (labor + overhead, not the shared between-stop time). Sorted by <b>$/hour</b>, worst earners on top. Red = the mow itself doesn't cover its cost. Click a header to re-sort by margin, profit, or price.</p>
   <p class="lead" id="moneysum" style="margin-top:0"></p>
   <div class="panel scroll"><div id="moneytable"></div></div>
 
   <h2 class="sec">Tighten the day <span class="tag">your two live levers</span></h2>
-  <p class="lead">Prices and weekly days are locked this season, so the only cost you control is <b>time</b>: mowing closer to the crew's own proven pace, and cutting the dead time between stops. Route <i>order</i> is already tight (re-sequencing saves under $40/week), and at ~6 mph implied between stops, most of that "drive" time is transition, not driving. So this is where the money is.</p>
+  <p class="lead">Prices and weekly days are locked this season, so the only cost you control is <b>time</b>: mowing closer to the crew's own proven pace, and tightening the between-stop tempo. Route <i>order</i> is already tight (re-sequencing saves under $40/week), so the room is in pace and transition, not the map.</p>
   <div class="cards" id="tightencards"></div>
 
   <h2 class="sec">Mow-pace hit-list <span class="tag">recoverable $</span></h2>
@@ -103,7 +103,7 @@ svg text{font-size:11px;fill:var(--muted)}
   <div class="panel scroll"><div id="pacetable"></div></div>
 
   <h2 class="sec">Dead time between stops <span class="tag">transition</span></h2>
-  <p class="lead">Average minutes between finishing one lawn and starting the next, by day. Driving two nearby suburban stops is only ~3-4 min, so anything well above that is load/unload, walking, and standing around. The taller the bar, the more slack in the day's tempo.</p>
+  <p class="lead">Average minutes between finishing one lawn and starting the next, by day. A short hop between nearby houses is a few minutes of driving; the rest is load/unload, walking to the backyard, and tempo. The taller the bar, the looser the day, Tuesday and Friday run noticeably slower than Monday.</p>
   <p class="lead" id="transum" style="margin-top:0"></p>
   <div class="panel" id="tranchart"></div>
 
@@ -154,7 +154,7 @@ svg text{font-size:11px;fill:var(--muted)}
     Source: Gonzalo's Jobber timecard ({{ meta.mowDays }} mow days, {{ meta.houseCount }} houses, {{ meta.totalMows }} mows).
     Only Gonzalo's clock is pulled, so Jonathan mowing alongside doesn't double-count the time.
     Typical = median normal time &middot; Target = average of the 3 fastest clean mows (a proven pace) &middot; Best = fastest logged &middot; Slack = Typical &minus; Target.
-    <br>P&amp;L: revenue = Jobber per-visit price &middot; labor = (mow + drive + morning yard) hours &times; ${{ meta.crewHourly|round|int }}/hr &times; {{ (1 + meta.burdenPct/100)|round(2) }} burden &middot; drive = actual logged travel to each house, yard split per stop, drive-back excluded &middot; overhead = ${{ meta.dailyOverhead|round|int }}/day split by mow time. Rates live in financial_config.yaml.
+    <br>P&amp;L: per house = price &minus; mow hours &times; ${{ meta.crewHourly|round|int }}/hr &times; {{ (1 + meta.burdenPct/100)|round(2) }} burden &minus; overhead (${{ meta.dailyOverhead|round|int }}/day split by mow time). Between-stop time (driving + morning load) is carried as one route-level cost, not split per house, because the timecard gaps are too noisy to attribute. Rates live in financial_config.yaml.
   </div>
 </div>
 
@@ -252,14 +252,15 @@ function cards(){
 
 function moneyCards(){
   const m=D.meta;
+  const weeks=D.weekly.length||1;
   const pos = m.profitPerWeek>=0;
   const items=[
-    {v:usd(m.profitPerWeek),l:'Profit per week',s:'on mows, after labor + overhead',hl:pos,neg:!pos},
+    {v:usd(m.profitPerWeek),l:'Profit per week',s:'all-in: mow labor, overhead + between-stop',hl:pos,neg:!pos},
     {v:fmt(m.marginPct,0)+'%',l:'Mow profit margin',s:usd(m.profit)+' total this season'},
-    {v:usd(m.medianProfit),l:'Median profit / mow',s:'typical house, per visit'},
     {v:usd(m.revenuePerWeek),l:'Revenue per week',s:m.pricedVisits+' priced mows'},
-    {v:usd(m.driveCost),l:'Drive + yard cost',s:'crew wages for driving the route'},
-    {v:usd(m.totalCost),l:'Total mow cost',s:usd(m.laborCost)+' mow + '+usd(m.driveCost)+' drive + '+usd(m.overheadCost)+' oh'},
+    {v:usd(m.transitionPerWeek),l:'Between-stop cost / wk',s:'route-level drive + load time, not per house'},
+    {v:usd(m.medianProfit),l:'Median profit / mow',s:'per house, mow only (before between-stop)'},
+    {v:usd(m.totalCost),l:'Total mow cost',s:usd(m.laborCost)+' mow + '+usd(m.transitionCost)+' between-stop + '+usd(m.overheadCost)+' oh (season)'},
   ];
   $('#moneycards').innerHTML=items.map(i=>
     '<div class="card'+(i.hl?' hl':'')+(i.neg?' neg':'')+'"><div class="v">'+i.v+'</div><div class="l">'+i.l+'</div><div class="s">'+i.s+'</div></div>'
@@ -274,15 +275,14 @@ function moneyPerHouse(){
     {label:'Day',val:h=>h.day,cell:h=>dayName[h.day]||h.day},
     {label:'Price',num:true,val:h=>h.price,cell:h=>usd2(h.price)},
     {label:'Mow',num:true,val:h=>h.typical,cell:h=>fmt(h.typical)+'m'},
-    {label:'Drive',num:true,val:h=>h.driveMin,cell:h=>h.driveMin==null?'-':fmt(h.driveMin)+'m'},
     {label:'Cost',num:true,val:h=>h.cost,cell:h=>usd2(h.cost)},
     {label:'Profit',num:true,val:h=>h.profit,cell:h=>profitCell(h.profit)},
     {label:'Margin',num:true,val:h=>h.margin,cell:h=>h.margin==null?'-':fmt(h.margin,0)+'%'},
     {label:'$/hr',num:true,val:h=>h.profitPerHr,cell:h=>profitCell(h.profitPerHr,true)},
-  ],rows,{sortCol:8,dir:1,rowClass:h=>h.profit<0?'loser':''});  // $/hr ascending = worst first
+  ],rows,{sortCol:7,dir:1,rowClass:h=>h.profit<0?'loser':''});  // $/hr ascending = worst first
   const losers=rows.filter(h=>h.profit<0).length;
-  $('#moneysum').innerHTML='<b>'+losers+'</b> of '+rows.length+' priced houses lose money per visit once drive time and overhead are in. '+
-    'Median profit '+usd(D.meta.medianProfit)+'/mow at '+fmt(D.meta.marginPct,0)+'% margin.';
+  $('#moneysum').innerHTML='<b>'+losers+'</b> of '+rows.length+' priced houses don\'t cover their own mow cost (labor + overhead). '+
+    'On top of every mow, the route also carries ~'+usd(D.meta.transitionPerWeek)+'/week of shared between-stop time.';
 }
 
 function weeklyMoney(){
@@ -491,13 +491,11 @@ function drilldown(){
 }
 
 function tightenCards(){
-  const m=D.meta, weeks=D.weekly.length||1;
-  const travelH=D.daily.reduce((a,d)=>a+(d.travelH||0),0);
-  const transWk=travelH/weeks*m.loadedHourly;
+  const m=D.meta;
   const items=[
     {v:usd(m.slackCostPerWeek),l:'Mow-pace claw-back / wk',s:'if every house hit its target pace',hl:true},
-    {v:usd(transWk),l:'Between-stop time / wk',s:'crew wages between lawns, mostly transition'},
-    {v:usd(m.profitPerWeek),l:'The loss to close / wk',s:'two levers above are bigger than this',neg:m.profitPerWeek<0},
+    {v:usd(m.transitionPerWeek),l:'Between-stop time / wk',s:'drive + morning load, the tempo lever'},
+    {v:usd(m.profitPerWeek),l:'The loss to close / wk',s:'the two levers above add up to more than this',neg:m.profitPerWeek<0},
   ];
   $('#tightencards').innerHTML=items.map(i=>
     '<div class="card'+(i.hl?' hl':'')+(i.neg?' neg':'')+'"><div class="v">'+i.v+'</div><div class="l">'+i.l+'</div><div class="s">'+i.s+'</div></div>').join('');
@@ -533,9 +531,9 @@ function transition(){
   const W=560,H=230,padL=30,padB=28,padT=12,bw=48,gap=(W-padL)/rows.length;
   let s='<svg viewBox="0 0 '+W+' '+H+'" width="100%">';
   // baseline ~4 min = pure driving
-  const yBase=padT+(H-padT-padB)*(1-4/max);
+  const yBase=padT+(H-padT-padB)*(1-5/max);
   s+='<line x1="'+padL+'" y1="'+yBase+'" x2="'+W+'" y2="'+yBase+'" stroke="#9aa7a0" stroke-dasharray="4 3"/>';
-  s+='<text x="'+W+'" y="'+(yBase-4)+'" text-anchor="end" style="fill:#6b7770">~4 min = just driving</text>';
+  s+='<text x="'+W+'" y="'+(yBase-4)+'" text-anchor="end" style="fill:#6b7770">~5 min = a typical hop</text>';
   rows.forEach((r,i)=>{
     const x=padL+gap*i+gap/2, base=H-padB;
     const y=padT+(H-padT-padB)*(1-r.avg/max);
@@ -545,11 +543,10 @@ function transition(){
     s+='<text x="'+x+'" y="'+(base+15)+'" text-anchor="middle" style="font-weight:600;fill:#1d2b22">'+dayName[r.day]+'</text>';
   });
   s+='</svg>';
-  $('#tranchart').innerHTML=s+'<div class="legend"><span>Bars = avg minutes between stops. Above the dashed line is time that isn\'t driving.</span></div>';
+  $('#tranchart').innerHTML=s+'<div class="legend"><span>Bars = avg minutes between stops. Well above a typical hop = extra load/unload and tempo slack.</span></div>';
   const weeks=D.weekly.length||1;
-  const travelH=D.daily.reduce((a,d)=>a+(d.travelH||0),0);
-  $('#transum').innerHTML='~<b>'+fmt(travelH/weeks,1)+' h/week</b> between stops (~'+usd(travelH/weeks*D.meta.loadedHourly)+
-    '). Trimming even 1-2 min per stop across ~16 stops/day is 25-30 min a day back on the mowers.';
+  $('#transum').innerHTML='The route burns ~<b>'+fmt(D.meta.transitionHrs/weeks,1)+' h/week</b> of non-mow paid time (~'+usd(D.meta.transitionPerWeek)+
+    ') between morning load and stop-to-stop. Trimming even 1-2 min per stop across ~16 stops/day is 25-30 min a day back on the mowers.';
 }
 
 cards(); moneyCards(); moneyPerHouse(); tightenCards(); paceTable(); transition(); dayCapacity(); dayBreakdown(); slackBoard(); longest(); consistency(); weekly(); weeklyMoney(); drilldown();
