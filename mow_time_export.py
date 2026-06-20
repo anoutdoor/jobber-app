@@ -773,9 +773,12 @@ def format_header(gacc, sid, freeze_rows=1, bold_row=0):
 
 
 # ---------------------------------------------------------------------------
-# Main
+# Gather — one read-only pull + full processing, shared by the sheet export and
+# the web dashboard so both always show the same numbers. Does NOT write the
+# sheet (safe to call from a web request). Note: apply_exclusions mutates
+# day_agg in place, so the order here matters and must run before standards.
 # ---------------------------------------------------------------------------
-def main():
+def gather_mow_data():
     gacc = google_access_token()
     print("[google auth OK]")
     client = JobberClient(gacc)
@@ -786,10 +789,37 @@ def main():
     detail, prop_visits, prop_info, day_agg = process(entries)
     compute_flags(detail)
     clean_prop_visits, excl_count, n_excluded = apply_exclusions(detail, day_agg)
-    std_rows, std_bold = build_standards(*compute_standards(detail))
+    props, day_rollup = compute_standards(detail)
     print(f"[{len(detail)} mow segments, {len(prop_visits)} properties, "
           f"{len(day_agg)} mow days | {n_excluded} outlier visits excluded "
           f"from summaries]")
+    return {
+        "gacc": gacc,
+        "detail": detail,
+        "prop_visits": prop_visits,
+        "clean_prop_visits": clean_prop_visits,
+        "prop_info": prop_info,
+        "day_agg": day_agg,
+        "props": props,
+        "day_rollup": day_rollup,
+        "excl_count": excl_count,
+        "n_excluded": n_excluded,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+def main():
+    g = gather_mow_data()
+    gacc = g["gacc"]
+    detail = g["detail"]
+    clean_prop_visits = g["clean_prop_visits"]
+    prop_info = g["prop_info"]
+    day_agg = g["day_agg"]
+    excl_count = g["excl_count"]
+    n_excluded = g["n_excluded"]
+    std_rows, std_bold = build_standards(g["props"], g["day_rollup"])
 
     tabs = {
         DETAIL_TAB: build_detail(detail),
@@ -821,6 +851,19 @@ def main():
                   f"{flag_counts.get('blip',0)} tiny-segment]")
 
     print("\nDone. Tabs written:", ", ".join(tabs.keys()))
+
+    # Refresh the web dashboard cache from this same pull so /mow-dashboard is
+    # instant and never re-hits Jobber on page load. Local import avoids a
+    # circular import (mow_dashboard imports gather_mow_data from this module).
+    dashboard_cached = False
+    try:
+        from mow_dashboard import save_cache, build_payload
+        save_cache(build_payload(g))
+        dashboard_cached = True
+        print("[dashboard cache refreshed]")
+    except Exception as e:
+        print(f"[dashboard cache refresh failed: {e}]")
+
     return {
         "status": "ok",
         "mows": len(detail),
@@ -829,6 +872,7 @@ def main():
         "flagged": sum(flag_counts.values()),
         "outliers_excluded": n_excluded,
         "tabs": list(tabs.keys()),
+        "dashboard_cached": dashboard_cached,
     }
 
 
