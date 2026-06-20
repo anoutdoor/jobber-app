@@ -326,6 +326,72 @@ def receivables():
     return _payroll_cors(resp)
 
 
+def _api_key_ok():
+    expected = (os.getenv("PAYROLL_API_KEY") or "").strip()
+    provided = (request.headers.get("X-Api-Key", "") or "").strip()
+    return bool(expected) and secrets.compare_digest(provided, expected)
+
+
+@app.route("/bank-connect", methods=["POST", "OPTIONS"])
+def bank_connect():
+    """Claim a SimpleFIN setup token (sent once from the cash tracker), store the
+    durable access URL server-side, and return the current account balances.
+    Key-gated and CORS-locked like the other cash-tracker endpoints."""
+    if request.method == "OPTIONS":
+        return _payroll_cors(app.make_response(("", 204)))
+    if not _api_key_ok():
+        resp = jsonify({"error": "unauthorized"})
+        resp.status_code = 401
+        return _payroll_cors(resp)
+
+    data = request.get_json(silent=True) or {}
+    token = (data.get("setup_token") or "").strip()
+    if not token:
+        resp = jsonify({"error": "missing_token", "message": "No setup token provided."})
+        resp.status_code = 400
+        return _payroll_cors(resp)
+
+    from financial.bank import claim_setup_token, store_access_url, fetch_accounts
+    try:
+        access_url = claim_setup_token(token)
+        store_access_url(access_url)
+        accounts, errors = fetch_accounts(access_url)
+    except Exception as e:
+        logger.exception("bank-connect failed")
+        resp = jsonify({"error": "connect_failed", "message": str(e)[:200]})
+        resp.status_code = 502
+        return _payroll_cors(resp)
+
+    return _payroll_cors(jsonify({"ok": True, "accounts": accounts, "errors": errors}))
+
+
+@app.route("/bank-balances", methods=["GET", "OPTIONS"])
+def bank_balances():
+    """Read-only account balances from the stored SimpleFIN connection."""
+    if request.method == "OPTIONS":
+        return _payroll_cors(app.make_response(("", 204)))
+    if not _api_key_ok():
+        resp = jsonify({"error": "unauthorized"})
+        resp.status_code = 401
+        return _payroll_cors(resp)
+
+    from financial.bank import load_access_url, fetch_accounts
+    access_url = load_access_url()
+    if not access_url:
+        resp = jsonify({"error": "not_connected", "message": "No SimpleFIN connection yet."})
+        resp.status_code = 409
+        return _payroll_cors(resp)
+    try:
+        accounts, errors = fetch_accounts(access_url)
+    except Exception as e:
+        logger.exception("bank-balances failed")
+        resp = jsonify({"error": "fetch_failed", "message": str(e)[:200]})
+        resp.status_code = 502
+        return _payroll_cors(resp)
+
+    return _payroll_cors(jsonify({"ok": True, "accounts": accounts, "errors": errors}))
+
+
 @app.route("/financial-debug")
 def financial_debug():
     """Dump raw responses from each Jobber query so we can see which ones
