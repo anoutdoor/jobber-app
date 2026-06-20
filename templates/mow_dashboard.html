@@ -93,6 +93,20 @@ svg text{font-size:11px;fill:var(--muted)}
   <p class="lead" id="moneysum" style="margin-top:0"></p>
   <div class="panel scroll"><div id="moneytable"></div></div>
 
+  <h2 class="sec">Tighten the day <span class="tag">your two live levers</span></h2>
+  <p class="lead">Prices and weekly days are locked this season, so the only cost you control is <b>time</b>: mowing closer to the crew's own proven pace, and cutting the dead time between stops. Route <i>order</i> is already tight (re-sequencing saves under $40/week), and at ~6 mph implied between stops, most of that "drive" time is transition, not driving. So this is where the money is.</p>
+  <div class="cards" id="tightencards"></div>
+
+  <h2 class="sec">Mow-pace hit-list <span class="tag">recoverable $</span></h2>
+  <p class="lead">Houses running the most over their own target pace, ranked by dollars you'd claw back per week if they hit it. This is the list to work, fastest payback first.</p>
+  <p class="lead" id="pacesum" style="margin-top:0"></p>
+  <div class="panel scroll"><div id="pacetable"></div></div>
+
+  <h2 class="sec">Dead time between stops <span class="tag">transition</span></h2>
+  <p class="lead">Average minutes between finishing one lawn and starting the next, by day. Driving two nearby suburban stops is only ~3-4 min, so anything well above that is load/unload, walking, and standing around. The taller the bar, the more slack in the day's tempo.</p>
+  <p class="lead" id="transum" style="margin-top:0"></p>
+  <div class="panel" id="tranchart"></div>
+
   <h2 class="sec">Where the day goes <span class="tag">per day of week</span></h2>
   <p class="lead">Each mow day's typical mowing time vs the target pace. The red number is <b>slack</b> &mdash; hours you'd save that day if every house hit its target. Add it up and it's about {{ meta.weeklySlackH }} h a week.</p>
   <div class="panel" id="daycap"></div>
@@ -476,7 +490,69 @@ function drilldown(){
   draw(D.segDates[D.segDates.length-1]);
 }
 
-cards(); moneyCards(); moneyPerHouse(); dayCapacity(); dayBreakdown(); slackBoard(); longest(); consistency(); weekly(); weeklyMoney(); drilldown();
+function tightenCards(){
+  const m=D.meta, weeks=D.weekly.length||1;
+  const travelH=D.daily.reduce((a,d)=>a+(d.travelH||0),0);
+  const transWk=travelH/weeks*m.loadedHourly;
+  const items=[
+    {v:usd(m.slackCostPerWeek),l:'Mow-pace claw-back / wk',s:'if every house hit its target pace',hl:true},
+    {v:usd(transWk),l:'Between-stop time / wk',s:'crew wages between lawns, mostly transition'},
+    {v:usd(m.profitPerWeek),l:'The loss to close / wk',s:'two levers above are bigger than this',neg:m.profitPerWeek<0},
+  ];
+  $('#tightencards').innerHTML=items.map(i=>
+    '<div class="card'+(i.hl?' hl':'')+(i.neg?' neg':'')+'"><div class="v">'+i.v+'</div><div class="l">'+i.l+'</div><div class="s">'+i.s+'</div></div>').join('');
+}
+
+function paceTable(){
+  const weeks=D.weekly.length||1;
+  const rows=D.houses.filter(h=>h.slack>=1 && h.mows>=4)
+    .map(h=>Object.assign({}, h, {perWk:(h.slackCost||0)*(h.mows/weeks)}));
+  rows.sort((a,b)=>b.perWk-a.perWk);
+  makeTable($('#pacetable'),[
+    {label:'House',name:true,val:h=>h.client,cell:h=>'<b>'+h.client+'</b><br><span style="color:#6b7770;font-size:12px">'+h.property+'</span>'},
+    {label:'Day',val:h=>h.day,cell:h=>dayName[h.day]||h.day},
+    {label:'Typical',num:true,val:h=>h.typical,cell:h=>fmt(h.typical)+'m'},
+    {label:'Target',num:true,val:h=>h.target,cell:h=>fmt(h.target)+'m'},
+    {label:'Over',num:true,val:h=>h.slack,cell:h=>'<span style="color:#c0392b;font-weight:600">+'+fmt(h.slack)+'m</span>'},
+    {label:'$/visit',num:true,val:h=>h.slackCost,cell:h=>usd2(h.slackCost)},
+    {label:'$/week',num:true,val:h=>h.perWk,cell:h=>'<b>'+usd2(h.perWk)+'</b>'},
+  ],rows.slice(0,20),{sortCol:6,dir:-1});
+  const totWk=rows.reduce((a,h)=>a+h.perWk,0);
+  $('#pacesum').innerHTML='Across every house, hitting target pace claws back ~<b>'+usd(totWk)+'/week</b>. Top 20 shown; work them top-down.';
+}
+
+function transition(){
+  const by={};
+  D.daily.forEach(d=>{ if(!d.props||d.props<3) return;
+    const g=by[d.day]||(by[d.day]={n:0,travelH:0,between:0,gaps:0});
+    g.n++; g.travelH+=d.travelH||0; const gaps=d.props-1;
+    if(gaps>0){ g.between+=(d.travelH*60)/gaps; g.gaps++; } });
+  const rows=DOW.filter(d=>by[d]).map(d=>({day:d,avg:by[d].between/by[d].gaps,props:by[d].travelH/by[d].n}));
+  if(!rows.length){ $('#tranchart').innerHTML='<p class="lead">Not enough data yet.</p>'; return; }
+  const max=Math.max(...rows.map(r=>r.avg))*1.15||1;
+  const W=560,H=230,padL=30,padB=28,padT=12,bw=48,gap=(W-padL)/rows.length;
+  let s='<svg viewBox="0 0 '+W+' '+H+'" width="100%">';
+  // baseline ~4 min = pure driving
+  const yBase=padT+(H-padT-padB)*(1-4/max);
+  s+='<line x1="'+padL+'" y1="'+yBase+'" x2="'+W+'" y2="'+yBase+'" stroke="#9aa7a0" stroke-dasharray="4 3"/>';
+  s+='<text x="'+W+'" y="'+(yBase-4)+'" text-anchor="end" style="fill:#6b7770">~4 min = just driving</text>';
+  rows.forEach((r,i)=>{
+    const x=padL+gap*i+gap/2, base=H-padB;
+    const y=padT+(H-padT-padB)*(1-r.avg/max);
+    const over=r.avg>5;
+    s+='<rect x="'+(x-bw/2)+'" y="'+y+'" width="'+bw+'" height="'+(base-y)+'" rx="3" fill="'+(over?'#e0a106':'#1f7a3d')+'"/>';
+    s+='<text x="'+x+'" y="'+(y-5)+'" text-anchor="middle" style="font-weight:600;fill:#1d2b22">'+fmt(r.avg,1)+'m</text>';
+    s+='<text x="'+x+'" y="'+(base+15)+'" text-anchor="middle" style="font-weight:600;fill:#1d2b22">'+dayName[r.day]+'</text>';
+  });
+  s+='</svg>';
+  $('#tranchart').innerHTML=s+'<div class="legend"><span>Bars = avg minutes between stops. Above the dashed line is time that isn\'t driving.</span></div>';
+  const weeks=D.weekly.length||1;
+  const travelH=D.daily.reduce((a,d)=>a+(d.travelH||0),0);
+  $('#transum').innerHTML='~<b>'+fmt(travelH/weeks,1)+' h/week</b> between stops (~'+usd(travelH/weeks*D.meta.loadedHourly)+
+    '). Trimming even 1-2 min per stop across ~16 stops/day is 25-30 min a day back on the mowers.';
+}
+
+cards(); moneyCards(); moneyPerHouse(); tightenCards(); paceTable(); transition(); dayCapacity(); dayBreakdown(); slackBoard(); longest(); consistency(); weekly(); weeklyMoney(); drilldown();
 </script>
 </body>
 </html>
