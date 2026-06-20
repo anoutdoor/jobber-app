@@ -232,8 +232,10 @@ def payroll_owed():
     if request.method == "OPTIONS":
         return _payroll_cors(app.make_response(("", 204)))
 
-    expected = os.getenv("PAYROLL_API_KEY")
-    provided = request.headers.get("X-Api-Key", "")
+    # Strip whitespace so a stray space/newline pasted into the Railway var or
+    # the client doesn't cause a silent mismatch.
+    expected = (os.getenv("PAYROLL_API_KEY") or "").strip()
+    provided = (request.headers.get("X-Api-Key", "") or "").strip()
     if not expected or not secrets.compare_digest(provided, expected):
         resp = jsonify({"error": "unauthorized"})
         resp.status_code = 401
