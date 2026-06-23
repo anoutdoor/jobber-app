@@ -546,6 +546,39 @@ def payouts():
     return _payroll_cors(jsonify({"ok": True, **data}))
 
 
+@app.route("/payout-diag", methods=["GET"])
+def payout_diag():
+    """Temporary: inspect live payout/payment data to find the right source for
+    'upcoming payouts'. Key-gated, read-only."""
+    if not _api_key_ok():
+        resp = jsonify({"error": "unauthorized"})
+        resp.status_code = 401
+        return resp
+    from jobber_sync import graphql_request
+    out = {}
+    try:
+        r = graphql_request('{ payoutRecords(first: 25) { totalCount nodes { status netAmount grossAmount arrivalDate } } }')
+        conn = ((r or {}).get("data") or {}).get("payoutRecords") or {}
+        nodes = conn.get("nodes") or []
+        from collections import Counter
+        out["payoutRecords_totalCount"] = conn.get("totalCount")
+        out["payoutRecords_statusCounts"] = dict(Counter(n.get("status") for n in nodes))
+        out["payoutRecords_sample"] = nodes[:6]
+        out["payoutRecords_errors"] = (r or {}).get("errors")
+
+        r2 = graphql_request('{ __type(name: "PaymentRecordInterface") { fields { name } } }')
+        out["paymentRecordInterface_fields"] = [f["name"] for f in ((((r2 or {}).get("data") or {}).get("__type") or {}).get("fields") or [])]
+
+        r3 = graphql_request('{ __type(name: "PaymentRecordFilterAttributes") { inputFields { name type { name ofType { name } } } } }')
+        out["paymentFilter_fields"] = [
+            (f["name"], (f.get("type") or {}).get("name") or ((f.get("type") or {}).get("ofType") or {}).get("name"))
+            for f in ((((r3 or {}).get("data") or {}).get("__type") or {}).get("inputFields") or [])
+        ]
+    except Exception as e:
+        out["error"] = str(e)[:300]
+    return jsonify(out)
+
+
 @app.route("/financial-debug")
 def financial_debug():
     """Dump raw responses from each Jobber query so we can see which ones
