@@ -556,6 +556,15 @@ def payout_diag():
         return resp
     from jobber_sync import graphql_request
     out = {}
+    typ = request.args.get("type")
+    if typ:
+        q = (
+            '{ __type(name: "%s") { name kind enumValues { name } '
+            'inputFields { name } '
+            'fields { name type { name kind ofType { name kind ofType { name } } } } } }'
+        ) % typ
+        r = graphql_request(q)
+        return jsonify({"type": ((r or {}).get("data") or {}).get("__type"), "errors": (r or {}).get("errors")})
     try:
         r = graphql_request('{ payoutRecords(first: 25) { totalCount nodes { status netAmount grossAmount arrivalDate } } }')
         conn = ((r or {}).get("data") or {}).get("payoutRecords") or {}
