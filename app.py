@@ -747,7 +747,13 @@ FIN_DASH_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "financi
 def financials():
     if "access_token" not in session:
         return redirect(url_for("login"))
-    return send_from_directory(FIN_DASH_DIR, "index.html")
+    # Inject the AI-CFO chat widget into the built dashboard at serve time. This
+    # keeps the chat working without rebuilding the React bundle (the build can't
+    # run locally while the project sits on iCloud-synced storage).
+    from financial.cfo import CHAT_WIDGET_HTML
+    with open(os.path.join(FIN_DASH_DIR, "index.html"), encoding="utf-8") as f:
+        html = f.read()
+    return html.replace("</body>", CHAT_WIDGET_HTML + "</body>")
 
 
 @app.route("/financials/ask", methods=["POST"])
