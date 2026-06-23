@@ -532,16 +532,27 @@ def jobber_payout_probe():
         return _payroll_cors(resp)
     from jobber_sync import graphql_request
     out = {}
+    typ = request.args.get("type")
     try:
-        r1 = graphql_request('{ __type(name: "Query") { fields { name } } }')
-        fields = [f["name"] for f in ((((r1 or {}).get("data") or {}).get("__type") or {}).get("fields") or [])]
-        out["total_root_queries"] = len(fields)
-        out["pay_queries"] = sorted(f for f in fields if "pay" in f.lower())
-        out["q1_errors"] = (r1 or {}).get("errors")
-        r2 = graphql_request('{ __schema { types { name } } }')
-        types = [t["name"] for t in ((((r2 or {}).get("data") or {}).get("__schema") or {}).get("types") or [])]
-        out["pay_types"] = sorted(n for n in types if "payout" in n.lower() or "payment" in n.lower())
-        out["q2_errors"] = (r2 or {}).get("errors")
+        if typ:
+            q = (
+                '{ __type(name: "%s") { name kind '
+                'enumValues { name } '
+                'inputFields { name type { name kind ofType { name } } } '
+                'fields { name type { name kind ofType { name kind ofType { name } } } '
+                'args { name type { name kind ofType { name } } } } } }'
+            ) % typ
+            r = graphql_request(q)
+            out["type"] = ((r or {}).get("data") or {}).get("__type")
+            out["errors"] = (r or {}).get("errors")
+        else:
+            r1 = graphql_request('{ __type(name: "Query") { fields { name } } }')
+            fields = [f["name"] for f in ((((r1 or {}).get("data") or {}).get("__type") or {}).get("fields") or [])]
+            out["total_root_queries"] = len(fields)
+            out["pay_queries"] = sorted(f for f in fields if "pay" in f.lower())
+            r2 = graphql_request('{ __schema { types { name } } }')
+            types = [t["name"] for t in ((((r2 or {}).get("data") or {}).get("__schema") or {}).get("types") or [])]
+            out["pay_types"] = sorted(n for n in types if "payout" in n.lower() or "payment" in n.lower())
     except Exception as e:
         out["error"] = str(e)[:300]
     return _payroll_cors(jsonify(out))
