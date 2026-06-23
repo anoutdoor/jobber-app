@@ -54,7 +54,9 @@ def create_hosted_link():
         {
             "user": {"client_user_id": "anos-cash"},
             "client_name": "A&N Cash Position",
-            "products": ["balance"],
+            # Balance is auto-included with any product; "transactions" is the
+            # most universally supported anchor. We only ever read live balances.
+            "products": ["transactions"],
             "country_codes": ["US"],
             "language": "en",
             "hosted_link": {},
