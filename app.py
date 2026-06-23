@@ -19,6 +19,7 @@ from mow_time_export import main as run_mow_export
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", secrets.token_hex(32))
@@ -407,6 +408,49 @@ def bank_balances():
         return _payroll_cors(resp)
 
     return _payroll_cors(jsonify({"ok": True, "accounts": accounts, "errors": errors}))
+
+
+@app.route("/api/summary", methods=["GET", "OPTIONS"])
+def api_summary():
+    """Read-only headline numbers for the master Command Center hub. Key-gated
+    and CORS-locked like the other cross-app endpoints. Returns a job-costing
+    and a mowing block; either is null if its source is unavailable, so the hub
+    degrades gracefully rather than erroring."""
+    if request.method == "OPTIONS":
+        return _payroll_cors(app.make_response(("", 204)))
+    if not _api_key_ok():
+        resp = jsonify({"error": "unauthorized"})
+        resp.status_code = 401
+        return _payroll_cors(resp)
+
+    job_costing = None
+    try:
+        d = compute_dashboard()
+        if d:
+            job_costing = {
+                "month_label": d.get("month_label"),
+                "revenue_mtd": d.get("month_revenue"),
+                "net_margin_pct": d.get("avg_net_margin"),
+                "job_count": d.get("month_job_count"),
+            }
+    except Exception:
+        logger.exception("api/summary job_costing failed")
+
+    mowing = None
+    try:
+        from mow_dashboard import get_payload
+        meta = (get_payload() or {}).get("meta", {})
+        if meta:
+            mowing = {
+                "profit_per_week": meta.get("profitPerWeek"),
+                "revenue_per_week": meta.get("revenuePerWeek"),
+                "house_count": meta.get("houseCount"),
+                "total_mows": meta.get("totalMows"),
+            }
+    except Exception:
+        logger.exception("api/summary mowing failed")
+
+    return _payroll_cors(jsonify({"ok": True, "job_costing": job_costing, "mowing": mowing}))
 
 
 @app.route("/financial-debug")
