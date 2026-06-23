@@ -7,6 +7,7 @@ real time. Access token is stored in the Sheets vault (provider "plaid").
 
 Env: PLAID_CLIENT_ID, PLAID_SECRET, PLAID_ENV (production | sandbox).
 """
+import json
 import logging
 import os
 
@@ -39,12 +40,31 @@ def _post(path, payload):
     return r.json()
 
 
-def load_plaid_token():
-    return (read_tokens(_PROVIDER) or {}).get("access_token") or ""
+def load_plaid_tokens():
+    """All stored access tokens (one per connected bank). Stored as a JSON list;
+    falls back to treating a bare string as a single legacy token."""
+    raw = (read_tokens(_PROVIDER) or {}).get("access_token") or ""
+    if not raw:
+        return []
+    try:
+        v = json.loads(raw)
+        if isinstance(v, list):
+            return [t for t in v if t]
+        if isinstance(v, str) and v:
+            return [v]
+    except (ValueError, TypeError):
+        return [raw]
+    return []
 
 
-def store_plaid_token(access_token, item_id=""):
-    write_tokens(_PROVIDER, {"access_token": access_token, "item_id": item_id})
+def store_plaid_tokens(tokens):
+    seen = set()
+    out = []
+    for t in tokens:
+        if t and t not in seen:
+            seen.add(t)
+            out.append(t)
+    write_tokens(_PROVIDER, {"access_token": json.dumps(out)})
 
 
 def create_hosted_link():
@@ -65,20 +85,22 @@ def create_hosted_link():
     return {"link_token": res.get("link_token"), "hosted_link_url": res.get("hosted_link_url")}
 
 
-def _extract_public_token(res):
+def _extract_public_tokens(res):
+    """Every public token in a finished Hosted Link session (one per bank)."""
+    tokens = []
     results = res.get("results") or {}
     for a in results.get("item_add_results") or []:
         if a.get("public_token"):
-            return a["public_token"]
+            tokens.append(a["public_token"])
     # Defensive fallbacks for shape variation.
     for s in res.get("link_sessions") or []:
         if s.get("public_token"):
-            return s["public_token"]
+            tokens.append(s["public_token"])
         inner = s.get("results") or {}
         for a in inner.get("item_add_results") or []:
             if a.get("public_token"):
-                return a["public_token"]
-    return None
+                tokens.append(a["public_token"])
+    return list(dict.fromkeys(tokens))
 
 
 def _to_float(v):
@@ -120,25 +142,41 @@ def _norm_account(a):
 
 
 def fetch_plaid_balances():
-    """Live balances from the stored Plaid connection. Returns list of accounts."""
-    token = load_plaid_token()
-    if not token:
+    """Live balances across every connected bank. None if nothing is connected."""
+    tokens = load_plaid_tokens()
+    if not tokens:
         return None
-    data = _post("/accounts/balance/get", {"access_token": token})
-    return [_norm_account(a) for a in (data.get("accounts") or [])]
+    accounts = []
+    for tok in tokens:
+        try:
+            data = _post("/accounts/balance/get", {"access_token": tok})
+            accounts.extend(_norm_account(a) for a in (data.get("accounts") or []))
+        except Exception:
+            logger.exception("plaid balance fetch failed for one item; skipping it")
+    return accounts
 
 
 def complete_link(link_token):
     """Poll a Hosted Link session. Returns (status, accounts):
       'pending'   -> user has not finished yet
-      'connected' -> exchanged + stored, accounts returned
+      'connected' -> every bank in the session exchanged + stored
+
+    Exchanges ALL public tokens (one per bank) and replaces the stored set with
+    this session's, so connecting multiple banks in one flow works cleanly.
     """
     res = _post("/link/token/get", {"link_token": link_token})
-    public_token = _extract_public_token(res)
-    if not public_token:
+    public_tokens = _extract_public_tokens(res)
+    if not public_tokens:
         return "pending", []
-    exchanged = _post("/item/public_token/exchange", {"public_token": public_token})
-    access_token = exchanged.get("access_token")
-    store_plaid_token(access_token, exchanged.get("item_id", ""))
+    access_tokens = []
+    for pt in public_tokens:
+        try:
+            exchanged = _post("/item/public_token/exchange", {"public_token": pt})
+            at = exchanged.get("access_token")
+            if at:
+                access_tokens.append(at)
+        except Exception:
+            logger.exception("plaid exchange failed for one public_token; skipping")
+    store_plaid_tokens(access_tokens)
     accounts = fetch_plaid_balances() or []
     return "connected", accounts
