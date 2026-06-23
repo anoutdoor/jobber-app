@@ -501,8 +501,12 @@ def api_summary():
 
     mowing = None
     try:
-        from mow_dashboard import get_payload
-        meta = (get_payload() or {}).get("meta", {})
+        # Read the cached mow payload only; never trigger a live rebuild here.
+        # refresh() does a slow Jobber pull and would block this status endpoint
+        # (and take job costing down with it) on a cold container. The cache is
+        # kept warm by the daily mow export and the /mow-dashboard route.
+        from mow_dashboard import load_cache
+        meta = (load_cache() or {}).get("meta", {})
         if meta:
             mowing = {
                 "profit_per_week": meta.get("profitPerWeek"),
@@ -744,6 +748,22 @@ def financials():
     if "access_token" not in session:
         return redirect(url_for("login"))
     return send_from_directory(FIN_DASH_DIR, "index.html")
+
+
+@app.route("/financials/ask", methods=["POST"])
+def financials_ask():
+    """AI CFO endpoint. The dashboard's chat panel POSTs {question, history};
+    Claude answers grounded in pnl.json. Gated on the Jobber session (JSON 401
+    rather than a redirect, since this is called via fetch)."""
+    if "access_token" not in session:
+        return jsonify({"error": "Session expired. Refresh the page and log in again."}), 401
+    body = request.get_json(silent=True) or {}
+    question = (body.get("question") or "").strip()
+    if not question:
+        return jsonify({"error": "Ask a question first."}), 400
+    from financial.cfo import answer_question
+    result = answer_question(question, history=body.get("history"))
+    return jsonify(result)
 
 
 @app.route("/financials/<path:asset>")
