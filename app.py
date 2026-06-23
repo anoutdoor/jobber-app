@@ -565,24 +565,53 @@ def payout_diag():
         ) % typ
         r = graphql_request(q)
         return jsonify({"type": ((r or {}).get("data") or {}).get("__type"), "errors": (r or {}).get("errors")})
+    from datetime import date, timedelta
+    after = (date.today() - timedelta(days=90)).isoformat() + "T00:00:00Z"
+    query = """
+    query Upcoming($after: ISO8601DateTime!, $cursor: String) {
+      paymentRecords(filter: { entryDate: { after: $after } }, first: 100, after: $cursor) {
+        nodes {
+          __typename
+          ... on JobberPaymentsCreditCardPaymentRecord { amount feeAmount payoutEstimatedDate payout { id } }
+          ... on JobberPaymentsACHPaymentRecord { amount feeAmount payoutEstimatedDate payout { id } }
+        }
+        pageInfo { hasNextPage endCursor }
+        totalCount
+      }
+    }
+    """
     try:
-        r = graphql_request('{ payoutRecords(first: 25) { totalCount nodes { status netAmount grossAmount arrivalDate } } }')
-        conn = ((r or {}).get("data") or {}).get("payoutRecords") or {}
-        nodes = conn.get("nodes") or []
-        from collections import Counter
-        out["payoutRecords_totalCount"] = conn.get("totalCount")
-        out["payoutRecords_statusCounts"] = dict(Counter(n.get("status") for n in nodes))
-        out["payoutRecords_sample"] = nodes[:6]
-        out["payoutRecords_errors"] = (r or {}).get("errors")
-
-        r2 = graphql_request('{ __type(name: "PaymentRecordInterface") { fields { name } } }')
-        out["paymentRecordInterface_fields"] = [f["name"] for f in ((((r2 or {}).get("data") or {}).get("__type") or {}).get("fields") or [])]
-
-        r3 = graphql_request('{ __type(name: "PaymentRecordFilterAttributes") { inputFields { name type { name ofType { name } } } } }')
-        out["paymentFilter_fields"] = [
-            (f["name"], (f.get("type") or {}).get("name") or ((f.get("type") or {}).get("ofType") or {}).get("name"))
-            for f in ((((r3 or {}).get("data") or {}).get("__type") or {}).get("inputFields") or [])
-        ]
+        cursor = None
+        pages = 0
+        gross = 0.0
+        net = 0.0
+        cnt = 0
+        by_date = {}
+        last_err = None
+        while True:
+            r = graphql_request(query, {"after": after, "cursor": cursor})
+            last_err = (r or {}).get("errors")
+            conn = ((r or {}).get("data") or {}).get("paymentRecords") or {}
+            for n in conn.get("nodes") or []:
+                ped = n.get("payoutEstimatedDate")
+                payout = n.get("payout")
+                if ped and not payout:
+                    amt = float(n.get("amount") or 0)
+                    fee = float(n.get("feeAmount") or 0)
+                    gross += amt
+                    net += amt - fee
+                    cnt += 1
+                    by_date[ped] = round(by_date.get(ped, 0) + (amt - fee), 2)
+            pi = conn.get("pageInfo") or {}
+            cursor = pi.get("endCursor")
+            pages += 1
+            if not pi.get("hasNextPage") or pages >= 15:
+                break
+        out["upcoming_count"] = cnt
+        out["upcoming_gross"] = round(gross, 2)
+        out["upcoming_net"] = round(net, 2)
+        out["by_date_net"] = {k: by_date[k] for k in sorted(by_date)}
+        out["errors"] = last_err
     except Exception as e:
         out["error"] = str(e)[:300]
     return jsonify(out)
