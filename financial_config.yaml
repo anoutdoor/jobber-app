@@ -136,6 +136,9 @@ variable_overhead:
 payroll:
   rate_overrides: {}      # e.g. "Erick Gonzalez": 22.00
   tax_burden_pct: 10
+  # Names excluded from the payroll-owed accrual (owners + anyone paid outside
+  # regular crew payroll). Matched on first name, case-insensitive.
+  exclude_names: [Arturo, Alex, Niko, Brock]
   # The LAST DAY (Sunday) of the most recently paid-out pay period.
   # Accrual window = day after this through 'now'. Update this each
   # Thursday after payroll lands.

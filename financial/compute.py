@@ -203,6 +203,7 @@ def compute_payroll_accrual(today=None, entries=None):
     start_dt = datetime.combine(week_start, datetime.min.time())
 
     rate_overrides = payroll_settings().get("rate_overrides") or {}
+    excluded = {str(x).strip().lower() for x in (payroll_settings().get("exclude_names") or []) if str(x).strip()}
     if entries is None:
         entries = fetch_time_entries_since(start_dt) or []
 
@@ -210,6 +211,9 @@ def compute_payroll_accrual(today=None, entries=None):
     for e in entries:
         uid = e.get("user_id")
         name = e.get("user_name") or "Unknown"
+        # Skip anyone on the exclusion list (matched on any word of their name).
+        if excluded and (excluded & set(name.lower().split())):
+            continue
         hours = e["duration_seconds"] / 3600.0
         rate = float(rate_overrides[name]) if name in rate_overrides else float(e.get("labour_rate") or 0)
 
