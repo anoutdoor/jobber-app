@@ -520,42 +520,30 @@ def api_summary():
     return _payroll_cors(jsonify({"ok": True, "job_costing": job_costing, "mowing": mowing}))
 
 
-@app.route("/jobber-payout-probe", methods=["GET", "OPTIONS"])
-def jobber_payout_probe():
-    """Temporary diagnostic: introspect the Jobber schema for payout/payment
-    queries and types. Key-gated, read-only."""
+@app.route("/payouts", methods=["GET", "OPTIONS"])
+def payouts():
+    """Read-only upcoming Jobber payouts (PENDING + IN_TRANSIT) for the cash
+    position tracker. Money collected through Jobber Payments that is settling
+    to the bank but hasn't landed yet."""
     if request.method == "OPTIONS":
         return _payroll_cors(app.make_response(("", 204)))
     if not _api_key_ok():
         resp = jsonify({"error": "unauthorized"})
         resp.status_code = 401
         return _payroll_cors(resp)
-    from jobber_sync import graphql_request
-    out = {}
-    typ = request.args.get("type")
+    from financial.payouts import fetch_upcoming_payouts
     try:
-        if typ:
-            q = (
-                '{ __type(name: "%s") { name kind '
-                'enumValues { name } '
-                'inputFields { name type { name kind ofType { name } } } '
-                'fields { name type { name kind ofType { name kind ofType { name } } } '
-                'args { name type { name kind ofType { name } } } } } }'
-            ) % typ
-            r = graphql_request(q)
-            out["type"] = ((r or {}).get("data") or {}).get("__type")
-            out["errors"] = (r or {}).get("errors")
-        else:
-            r1 = graphql_request('{ __type(name: "Query") { fields { name } } }')
-            fields = [f["name"] for f in ((((r1 or {}).get("data") or {}).get("__type") or {}).get("fields") or [])]
-            out["total_root_queries"] = len(fields)
-            out["pay_queries"] = sorted(f for f in fields if "pay" in f.lower())
-            r2 = graphql_request('{ __schema { types { name } } }')
-            types = [t["name"] for t in ((((r2 or {}).get("data") or {}).get("__schema") or {}).get("types") or [])]
-            out["pay_types"] = sorted(n for n in types if "payout" in n.lower() or "payment" in n.lower())
+        data = fetch_upcoming_payouts()
     except Exception as e:
-        out["error"] = str(e)[:300]
-    return _payroll_cors(jsonify(out))
+        logger.exception("payouts failed")
+        resp = jsonify({"error": "fetch_failed", "message": str(e)[:200]})
+        resp.status_code = 502
+        return _payroll_cors(resp)
+    if data is None:
+        resp = jsonify({"error": "jobber_auth", "message": "Jobber token missing or expired."})
+        resp.status_code = 502
+        return _payroll_cors(resp)
+    return _payroll_cors(jsonify({"ok": True, **data}))
 
 
 @app.route("/financial-debug")
