@@ -14,6 +14,7 @@ from scheduler import start_scheduler, stop_scheduler
 from financial import qbo as financial_qbo
 from financial import google_auth as financial_google_auth
 from financial.digest import run_digest
+from financial.pnl_reminder import send_pnl_reminder
 from mow_time_export import main as run_mow_export
 
 load_dotenv()
@@ -92,6 +93,7 @@ def index():
             + "<p><a href='/backfill'>Run Historical Backfill (Jan 1 2026 – Today)</a></p>"
             + "<p><a href='/reconcile-now'>Run Overhead Reconciliation Now</a></p>"
             + "<p><a href='/digest-now?dry=1'>Preview Cashflow Digest (no email)</a></p>"
+            + "<p><a href='/pnl-reminder-now?dry=1'>Preview Monthly P&amp;L Reminder (no email)</a></p>"
             + "<p><a href='/digest-now'>Send Cashflow Digest Now</a></p>"
             + "<p><a href='/qbo/test'>Test QBO Balance Pull</a></p>"
             + "<p><a href='/logout'>Logout</a></p>"
@@ -198,6 +200,20 @@ def digest_now():
     if dry and "html" in result:
         return result["html"]
     return jsonify({k: v for k, v in result.items() if k != "html"})
+
+
+@app.route("/pnl-reminder-now")
+def pnl_reminder_now():
+    """Manually fire (or preview) the monthly P&L update reminder. Add ?dry=1 to
+    render the email without sending. The real send runs automatically on the
+    15th at 8am CT via the scheduler."""
+    if "access_token" not in session:
+        return redirect(url_for("login"))
+    dry = request.args.get("dry") == "1"
+    result = send_pnl_reminder(dry_run=dry)
+    if dry and "html" in result:
+        return result["html"]
+    return jsonify(result)
 
 
 # Origins allowed to call /payroll-owed cross-origin (the cash position tracker).
@@ -798,7 +814,8 @@ if __name__ == "__main__":
     # Avoid double-start from Flask's reloader spawning a second process
     if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not app.debug:
         start_scheduler(run_sync, reconcile_daily_overhead, digest_fn=run_digest,
-                        mow_export_fn=run_mow_export)
+                        mow_export_fn=run_mow_export,
+                        pnl_reminder_fn=send_pnl_reminder)
 
     import atexit
     atexit.register(stop_scheduler)

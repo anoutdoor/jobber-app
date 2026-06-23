@@ -10,7 +10,8 @@ _scheduler = None
 CT = pytz.timezone("America/Chicago")
 
 
-def start_scheduler(sync_fn, reconcile_fn, digest_fn=None, mow_export_fn=None):
+def start_scheduler(sync_fn, reconcile_fn, digest_fn=None, mow_export_fn=None,
+                    pnl_reminder_fn=None):
     global _scheduler
     if _scheduler and _scheduler.running:
         return
@@ -54,6 +55,16 @@ def start_scheduler(sync_fn, reconcile_fn, digest_fn=None, mow_export_fn=None):
             replace_existing=True,
         )
         logger.info("Scheduled daily mow-time export + dashboard refresh (7pm CT).")
+
+    if pnl_reminder_fn:
+        _scheduler.add_job(
+            pnl_reminder_fn,
+            trigger=CronTrigger(day=15, hour=8, minute=0, timezone=CT),
+            id="monthly_pnl_reminder",
+            name="Monthly P&L update reminder (15th, 8am CT)",
+            replace_existing=True,
+        )
+        logger.info("Scheduled monthly P&L update reminder (15th, 8am CT).")
 
     _scheduler.start()
 
