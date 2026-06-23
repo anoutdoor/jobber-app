@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Log Marketing Spend — A&amp;N Outdoor Services</title>
+<style>
+  :root {
+    --bg: #0b1020; --panel: #151b30; --panel-2: #1c2342; --line: #2a3357;
+    --ink: #e8ecf8; --muted: #93a0c4; --indigo: #6366f1; --gold: #f1b434; --red: #f87171;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.45; }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 28px 20px 64px; }
+  a { color: #818cf8; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h1 .accent { color: var(--gold); }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px; margin: 16px 0; }
+  .panel h2 { font-size: 15px; margin: 0 0 14px; }
+  form .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; }
+  label { display: block; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 5px; }
+  input, select { width: 100%; background: var(--panel-2); border: 1px solid var(--line); color: var(--ink);
+    border-radius: 9px; padding: 9px 10px; font-size: 14px; }
+  input:focus, select:focus { outline: none; border-color: var(--indigo); }
+  .kind-toggle { display: flex; gap: 10px; }
+  .kind-toggle label { display: flex; align-items: center; gap: 6px; text-transform: none; letter-spacing: 0; font-size: 14px; color: var(--ink); margin: 0; cursor: pointer; }
+  .hint { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .btn { display: inline-block; text-decoration: none; background: var(--indigo); color: #fff; border: none;
+    padding: 10px 18px; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .btn.ghost { background: transparent; border: 1px solid var(--line); color: var(--ink); }
+  .row-actions { margin-top: 16px; display: flex; gap: 10px; align-items: center; }
+  .msg { background: #3b1d23; border: 1px solid var(--red); color: #fecaca; padding: 10px 12px; border-radius: 9px; margin-bottom: 14px; font-size: 14px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); }
+  td.num, th.num { text-align: right; }
+  thead th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .4px; }
+  .kindpill { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--panel-2); color: var(--muted); }
+  .del { background: none; border: 1px solid var(--line); color: var(--muted); border-radius: 8px; padding: 4px 10px; cursor: pointer; font-size: 13px; }
+  .del:hover { color: var(--red); border-color: var(--red); }
+  .empty { color: var(--muted); padding: 12px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Log Marketing <span class="accent">Spend</span></h1>
+  <div class="sub">Door hangers, the monthly SEO fee, FB boosts. Saved to your spend sheet, feeds the
+    <a href="/marketing">ROI dashboard</a>.</div>
+
+  {% if msg %}<div class="msg">{{ msg }}</div>{% endif %}
+
+  <div class="panel">
+    <h2>Add an entry</h2>
+    <form method="post" action="/marketing/spend">
+      <div class="grid">
+        <div>
+          <label for="channel">Channel</label>
+          <select id="channel" name="channel" required>
+            {% for c in channels %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label>Type</label>
+          <div class="kind-toggle" style="padding-top:6px;">
+            <label><input type="radio" name="kind" value="one_time" checked> One-time</label>
+            <label><input type="radio" name="kind" value="monthly"> Monthly</label>
+          </div>
+        </div>
+        <div>
+          <label for="amount">Amount ($)</label>
+          <input id="amount" name="amount" type="number" step="0.01" min="0" placeholder="250" required>
+          <div class="hint">For monthly, enter the per-month fee.</div>
+        </div>
+        <div>
+          <label for="date">Date / start month</label>
+          <input id="date" name="date" type="date">
+        </div>
+        <div>
+          <label for="end_date">End (monthly only)</label>
+          <input id="end_date" name="end_date" type="date">
+          <div class="hint">Blank = ongoing.</div>
+        </div>
+        <div>
+          <label for="quantity"># pieces</label>
+          <input id="quantity" name="quantity" type="number" min="0" placeholder="500">
+          <div class="hint">e.g. door hangers dropped.</div>
+        </div>
+        <div>
+          <label for="neighborhood">Neighborhood</label>
+          <input id="neighborhood" name="neighborhood" type="text" placeholder="Scarsdale">
+        </div>
+        <div>
+          <label for="note">Note</label>
+          <input id="note" name="note" type="text" placeholder="optional">
+        </div>
+      </div>
+      <div class="row-actions">
+        <button class="btn" type="submit">Save spend</button>
+        <a class="btn ghost" href="/marketing">Back to dashboard</a>
+      </div>
+    </form>
+  </div>
+
+  <div class="panel">
+    <h2>Logged spend</h2>
+    {% if entries %}
+    <table>
+      <thead>
+        <tr><th>Date</th><th>Channel</th><th>Type</th><th class="num">Amount</th><th class="num">Qty</th><th>Neighborhood</th><th>Note</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for e in entries %}
+        <tr>
+          <td>{{ e.date or '—' }}{% if e.kind == 'monthly' and e.end_date %} → {{ e.end_date }}{% elif e.kind == 'monthly' %} → ongoing{% endif %}</td>
+          <td>{{ e.channel }}</td>
+          <td><span class="kindpill">{{ 'monthly' if e.kind == 'monthly' else 'one-time' }}</span></td>
+          <td class="num">${{ '{:,.2f}'.format(e.amount|float) if e.amount not in (None, '') else '0.00' }}{% if e.kind == 'monthly' %}/mo{% endif %}</td>
+          <td class="num">{{ e.quantity or '' }}</td>
+          <td>{{ e.neighborhood or '' }}</td>
+          <td>{{ e.note or '' }}</td>
+          <td>
+            <form method="post" action="/marketing/spend/delete" onsubmit="return confirm('Delete this entry?');" style="margin:0;">
+              <input type="hidden" name="id" value="{{ e.id }}">
+              <button class="del" type="submit">delete</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <div class="empty">No spend logged yet. Add your monthly SEO fee and any door-hanger drops to start seeing cost per client and ROI.</div>
+    {% endif %}
+  </div>
+
+  <div class="sub"><a href="/marketing">&larr; Back to Marketing ROI</a></div>
+</div>
+</body>
+</html>

@@ -16,6 +16,7 @@ from financial import google_auth as financial_google_auth
 from financial.digest import run_digest
 from financial.pnl_reminder import send_pnl_reminder
 from mow_time_export import main as run_mow_export
+import marketing
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -90,6 +91,7 @@ def index():
             + "<p><a href='/dashboard'><strong>→ Open Dashboard</strong></a></p>"
             + "<p><a href='/mow-dashboard'><strong>→ Open Mowing Numbers Dashboard</strong></a></p>"
             + "<p><a href='/financials'><strong>→ Open Financial Dashboard (P&amp;L)</strong></a></p>"
+            + "<p><a href='/marketing'><strong>→ Open Marketing ROI Dashboard</strong></a></p>"
             + "<p><a href='/sync-now'>Run Sync Now</a></p>"
             + "<p><a href='/backfill'>Run Historical Backfill (Jan 1 2026 – Today)</a></p>"
             + "<p><a href='/reconcile-now'>Run Overhead Reconciliation Now</a></p>"
@@ -517,7 +519,17 @@ def api_summary():
     except Exception:
         logger.exception("api/summary mowing failed")
 
-    return _payroll_cors(jsonify({"ok": True, "job_costing": job_costing, "mowing": mowing}))
+    marketing_block = None
+    try:
+        # Cache-only — never triggers a live Jobber pull (keeps this endpoint fast
+        # and matches the mowing block's read-only contract above).
+        marketing_block = marketing.summary_block()
+    except Exception:
+        logger.exception("api/summary marketing failed")
+
+    return _payroll_cors(jsonify({
+        "ok": True, "job_costing": job_costing, "mowing": mowing, "marketing": marketing_block,
+    }))
 
 
 @app.route("/payouts", methods=["GET", "OPTIONS"])
@@ -836,6 +848,90 @@ def clients():
     return jsonify(data.get("data", {}))
 
 
+# ---------------------------------------------------------------------------
+# Marketing ROI dashboard
+# ---------------------------------------------------------------------------
+
+@app.route("/marketing")
+def marketing_dashboard():
+    """Marketing ROI dashboard. Lead source per client comes live from Jobber;
+    spend is logged on /marketing/spend. Gated behind the Jobber session because
+    it shows revenue (matches /financials). ?range=30d|90d|ytd|all selects the
+    window; ?refresh=1 forces a live Jobber re-pull before computing."""
+    if "access_token" not in session:
+        return redirect(url_for("login"))
+    import json as _json
+    range_key = request.args.get("range", "ytd")
+    if request.args.get("refresh") == "1":
+        try:
+            marketing.get_clients(force=True)
+        except Exception:
+            logger.exception("marketing: forced refresh failed")
+    try:
+        data = marketing.compute(range_key)
+    except Exception as e:
+        logger.exception("marketing: compute failed")
+        return (
+            "<h2>Marketing dashboard</h2>"
+            "<p>Couldn't build the numbers right now.</p>"
+            f"<pre style='color:#a5281b'>{e}</pre>"
+            "<p>If the Jobber token just expired, reconnect at <a href='/login'>/login</a> "
+            "and <a href='/marketing?refresh=1'>try again</a>.</p>"
+        ), 500
+    return render_template("marketing_dashboard.html", data=data,
+                           trend_json=_json.dumps(data["trend"]))
+
+
+@app.route("/marketing/spend", methods=["GET", "POST"])
+def marketing_spend():
+    """Log marketing spend (door hangers, the monthly SEO fee, FB boosts). Stored
+    in the _marketing_spend Sheet tab so it survives Railway redeploys and stays
+    editable from a phone."""
+    if "access_token" not in session:
+        return redirect(url_for("login"))
+    msg = ""
+    if request.method == "POST":
+        entry = {
+            "channel": (request.form.get("channel") or "").strip(),
+            "kind": (request.form.get("kind") or "one_time").strip(),
+            "amount": (request.form.get("amount") or "").strip(),
+            "date": (request.form.get("date") or "").strip(),
+            "end_date": (request.form.get("end_date") or "").strip(),
+            "quantity": (request.form.get("quantity") or "").strip(),
+            "neighborhood": (request.form.get("neighborhood") or "").strip(),
+            "note": (request.form.get("note") or "").strip(),
+        }
+        if not entry["channel"] or not entry["amount"]:
+            msg = "Channel and amount are required."
+        else:
+            try:
+                marketing.add_spend(entry)
+                return redirect(url_for("marketing_spend"))
+            except Exception as e:
+                logger.exception("marketing: add_spend failed")
+                msg = f"Could not save: {e}"
+    try:
+        entries = sorted(marketing.read_spend(), key=lambda e: str(e.get("date") or ""), reverse=True)
+    except Exception:
+        logger.exception("marketing: read_spend failed")
+        entries = []
+    return render_template("marketing_spend.html", entries=entries,
+                           channels=marketing.CANONICAL_SOURCES, msg=msg)
+
+
+@app.route("/marketing/spend/delete", methods=["POST"])
+def marketing_spend_delete():
+    if "access_token" not in session:
+        return redirect(url_for("login"))
+    eid = (request.form.get("id") or "").strip()
+    if eid:
+        try:
+            marketing.delete_spend(eid)
+        except Exception:
+            logger.exception("marketing: delete_spend failed")
+    return redirect(url_for("marketing_spend"))
+
+
 @app.route("/logout")
 def logout():
     session.clear()
@@ -974,7 +1070,8 @@ if __name__ == "__main__":
     if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not app.debug:
         start_scheduler(run_sync, reconcile_daily_overhead, digest_fn=run_digest,
                         mow_export_fn=run_mow_export,
-                        pnl_reminder_fn=send_pnl_reminder)
+                        pnl_reminder_fn=send_pnl_reminder,
+                        marketing_refresh_fn=marketing.refresh)
 
     import atexit
     atexit.register(stop_scheduler)

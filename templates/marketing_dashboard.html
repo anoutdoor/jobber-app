@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Marketing ROI — A&amp;N Outdoor Services</title>
+<style>
+  :root {
+    --bg: #0b1020;
+    --panel: #151b30;
+    --panel-2: #1c2342;
+    --line: #2a3357;
+    --ink: #e8ecf8;
+    --muted: #93a0c4;
+    --indigo: #6366f1;
+    --indigo-bright: #818cf8;
+    --gold: #f1b434;
+    --green: #34d399;
+    --red: #f87171;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.45;
+  }
+  .wrap { max-width: 1140px; margin: 0 auto; padding: 28px 20px 64px; }
+  a { color: var(--indigo-bright); }
+  header.top { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+  h1 { font-size: 24px; margin: 0; letter-spacing: .2px; }
+  h1 .accent { color: var(--gold); }
+  .sub { color: var(--muted); font-size: 13px; margin-top: 4px; }
+  .ranges { display: flex; gap: 8px; flex-wrap: wrap; }
+  .ranges a {
+    text-decoration: none; color: var(--muted); border: 1px solid var(--line);
+    padding: 6px 12px; border-radius: 999px; font-size: 13px; background: var(--panel);
+  }
+  .ranges a.active { color: #0b1020; background: var(--gold); border-color: var(--gold); font-weight: 600; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)); gap: 14px; margin: 22px 0; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; }
+  .card .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .6px; }
+  .card .value { font-size: 26px; font-weight: 700; margin-top: 6px; }
+  .card .value.gold { color: var(--gold); }
+  .card .foot { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px 18px 8px; margin: 18px 0; }
+  .panel h2 { font-size: 15px; margin: 0 0 12px; color: var(--ink); }
+  .panel h2 .note { color: var(--muted); font-weight: 400; font-size: 12px; margin-left: 8px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: right; padding: 10px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; }
+  thead th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .4px; }
+  tbody tr:hover { background: var(--panel-2); }
+  tr.total td { font-weight: 700; border-top: 2px solid var(--line); }
+  tr.unattributed td { color: var(--muted); font-style: italic; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 8px; vertical-align: middle; }
+  .pos { color: var(--green); }
+  .neg { color: var(--red); }
+  .pill { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--panel-2); color: var(--muted); }
+  .muted { color: var(--muted); }
+  .chart-legend { display: flex; flex-wrap: wrap; gap: 14px; margin: 4px 0 14px; font-size: 12px; color: var(--muted); }
+  .chart-legend span { display: inline-flex; align-items: center; }
+  .actions { margin-top: 8px; }
+  .btn {
+    display: inline-block; text-decoration: none; background: var(--indigo); color: #fff;
+    padding: 9px 16px; border-radius: 10px; font-size: 14px; font-weight: 600; border: none; cursor: pointer;
+  }
+  .btn.ghost { background: transparent; border: 1px solid var(--line); color: var(--ink); }
+  .dq { display: flex; gap: 18px; flex-wrap: wrap; align-items: center; }
+  .dq .big { font-size: 22px; font-weight: 700; }
+  .warn { color: var(--gold); }
+  footer { color: var(--muted); font-size: 12px; margin-top: 26px; }
+  .empty { color: var(--muted); padding: 10px 0 18px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  {% set channel_colors = {
+    'SEO': '#6366f1', 'Door Hanger': '#f1b434', 'Facebook Group': '#38bdf8',
+    'Referral': '#34d399', 'Google Ads': '#fb7185', 'Meta Ads': '#a78bfa',
+    'Other': '#94a3b8', 'Unattributed': '#475569'
+  } %}
+  {% macro money(v) %}{% if v is none %}<span class="muted">—</span>{% else %}${{ '{:,.0f}'.format(v) }}{% endif %}{% endmacro %}
+  {% macro money2(v) %}{% if v is none %}<span class="muted">—</span>{% else %}${{ '{:,.2f}'.format(v) }}{% endif %}{% endmacro %}
+
+  <header class="top">
+    <div>
+      <h1>Marketing <span class="accent">ROI</span></h1>
+      <div class="sub">A&amp;N Outdoor Services &middot; lead source pulled live from Jobber
+        {% if data.generated_at %}&middot; data as of {{ data.generated_at }}{% endif %}</div>
+    </div>
+    <div class="ranges">
+      {% for key, label in [('30d','30 days'), ('90d','90 days'), ('ytd','This year'), ('all','All time')] %}
+        <a href="/marketing?range={{ key }}" class="{{ 'active' if data.range.key == key else '' }}">{{ label }}</a>
+      {% endfor %}
+    </div>
+  </header>
+
+  {% set t = data.totals %}
+  <div class="cards">
+    <div class="card">
+      <div class="label">New clients</div>
+      <div class="value">{{ t.clients }}</div>
+      <div class="foot">{{ t.won }} won &middot; {{ t.open_leads }} open leads</div>
+    </div>
+    <div class="card">
+      <div class="label">Marketing spend</div>
+      <div class="value">{{ money(t.spend) }}</div>
+      <div class="foot">{{ data.range.label|lower }}</div>
+    </div>
+    <div class="card">
+      <div class="label">Cost / new client</div>
+      <div class="value gold">{{ money2(t.cost_per_client) }}</div>
+      <div class="foot">spend &divide; won clients</div>
+    </div>
+    <div class="card">
+      <div class="label">Revenue attributed</div>
+      <div class="value">{{ money(t.revenue) }}</div>
+      <div class="foot">billed to clients won in period</div>
+    </div>
+    <div class="card">
+      <div class="label">Blended ROI</div>
+      {% if t.roi is none %}
+        <div class="value muted">—</div><div class="foot">log spend to see ROI</div>
+      {% else %}
+        <div class="value {{ 'pos' if t.roi >= 1 else 'neg' }}">{{ '{:.1f}'.format(t.roi) }}&times;</div>
+        <div class="foot">{{ '%+.0f'|format(t.romi) }}% return on spend</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>By channel <span class="note">clients counted in the period they were won; revenue is their lifetime billing</span></h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Channel</th><th>New</th><th>Won</th><th>Open</th>
+          <th>Spend</th><th>Cost / lead</th><th>Cost / client</th>
+          <th>Revenue</th><th>ROI</th><th>Return</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for ch in data.channels %}
+          {% if ch.channel != 'Unattributed' %}
+          <tr>
+            <td><span class="dot" style="background: {{ channel_colors.get(ch.channel, '#94a3b8') }}"></span>{{ ch.channel }}</td>
+            <td>{{ ch.clients }}</td>
+            <td>{{ ch.won }}</td>
+            <td>{{ ch.open_leads }}</td>
+            <td>{{ money(ch.spend) }}</td>
+            <td>{{ money2(ch.cost_per_lead) }}</td>
+            <td>{{ money2(ch.cost_per_client) }}</td>
+            <td>{{ money(ch.revenue) }}</td>
+            <td>{% if ch.roi is none %}<span class="muted">—</span>{% else %}<span class="{{ 'pos' if ch.roi >= 1 else 'neg' }}">{{ '{:.1f}'.format(ch.roi) }}&times;</span>{% endif %}</td>
+            <td>{% if ch.romi is none %}<span class="muted">—</span>{% else %}<span class="{{ 'pos' if ch.romi >= 0 else 'neg' }}">{{ '%+.0f'|format(ch.romi) }}%</span>{% endif %}</td>
+          </tr>
+          {% endif %}
+        {% endfor %}
+        {% set u = data.channels | selectattr('channel', 'equalto', 'Unattributed') | first %}
+        {% if u and u.clients %}
+          <tr class="unattributed">
+            <td><span class="dot" style="background: {{ channel_colors['Unattributed'] }}"></span>Unattributed</td>
+            <td>{{ u.clients }}</td><td>{{ u.won }}</td><td>{{ u.open_leads }}</td>
+            <td>{{ money(u.spend) }}</td><td><span class="muted">—</span></td><td><span class="muted">—</span></td>
+            <td>{{ money(u.revenue) }}</td><td><span class="muted">—</span></td><td><span class="muted">—</span></td>
+          </tr>
+        {% endif %}
+        <tr class="total">
+          <td>Total</td>
+          <td>{{ t.clients }}</td><td>{{ t.won }}</td><td>{{ t.open_leads }}</td>
+          <td>{{ money(t.spend) }}</td>
+          <td>{{ money2(t.cost_per_lead) }}</td>
+          <td>{{ money2(t.cost_per_client) }}</td>
+          <td>{{ money(t.revenue) }}</td>
+          <td>{% if t.roi is none %}<span class="muted">—</span>{% else %}<span class="{{ 'pos' if t.roi >= 1 else 'neg' }}">{{ '{:.1f}'.format(t.roi) }}&times;</span>{% endif %}</td>
+          <td>{% if t.romi is none %}<span class="muted">—</span>{% else %}<span class="{{ 'pos' if t.romi >= 0 else 'neg' }}">{{ '%+.0f'|format(t.romi) }}%</span>{% endif %}</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="actions" style="padding:12px 0 4px;">
+      <a class="btn" href="/marketing/spend">+ Log marketing spend</a>
+      <a class="btn ghost" href="/marketing?range={{ data.range.key }}&amp;refresh=1">Refresh from Jobber</a>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>New clients by source <span class="note">this year, by month</span></h2>
+    <div id="legend" class="chart-legend"></div>
+    <div id="chart"></div>
+    <div id="chart-empty" class="empty" style="display:none;">No clients yet this year.</div>
+  </div>
+
+  <div class="panel">
+    <h2>Data quality <span class="note">the dashboard is only as good as the lead source you set in Jobber</span></h2>
+    <div class="dq">
+      <div>
+        <div class="big {{ 'warn' if data.data_quality.pct_attributed < 80 else 'pos' }}">{{ data.data_quality.pct_attributed }}%</div>
+        <div class="muted">of new clients have a source set</div>
+      </div>
+      <div class="muted">
+        {{ data.data_quality.with_source }} of {{ data.data_quality.total_clients }} clients tagged
+        {% if data.data_quality.without_source %}
+          &middot; <span class="warn">{{ data.data_quality.without_source }} missing a lead source</span>
+        {% endif %}
+      </div>
+    </div>
+    {% if data.data_quality.unattributed_names %}
+      <div class="muted" style="margin-top:10px; font-size:13px;">
+        Missing: {{ data.data_quality.unattributed_names | join(', ') }}
+      </div>
+    {% endif %}
+  </div>
+
+  <footer>
+    Lead source comes straight from Jobber's <code>leadSource</code> on each client.
+    Spend is what you log on the <a href="/marketing/spend">spend page</a>.
+    Google &amp; Meta Ads stay at zero until you connect them.
+    <div style="margin-top:8px;"><a href="/">&larr; Back to home</a></div>
+  </footer>
+
+</div>
+
+<script>
+  const TREND = {{ trend_json | safe }};
+  const COLORS = {
+    'SEO': '#6366f1', 'Door Hanger': '#f1b434', 'Facebook Group': '#38bdf8',
+    'Referral': '#34d399', 'Google Ads': '#fb7185', 'Meta Ads': '#a78bfa',
+    'Other': '#94a3b8', 'Unattributed': '#475569'
+  };
+
+  (function drawChart() {
+    const months = TREND.months || [];
+    const series = TREND.series || {};
+    const names = Object.keys(series);
+    const totalAll = names.reduce((a, n) => a + series[n].reduce((x, y) => x + y, 0), 0);
+    if (!months.length || totalAll === 0) {
+      document.getElementById('chart-empty').style.display = 'block';
+      return;
+    }
+
+    // Legend
+    const legend = document.getElementById('legend');
+    names.forEach(n => {
+      if (series[n].reduce((a, b) => a + b, 0) === 0) return;
+      const s = document.createElement('span');
+      s.innerHTML = `<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${COLORS[n] || '#94a3b8'};margin-right:6px;"></span>${n}`;
+      legend.appendChild(s);
+    });
+
+    // Stacked bars
+    const W = Math.max(520, months.length * 64);
+    const H = 240, padL = 34, padB = 28, padT = 10;
+    const plotH = H - padB - padT;
+    const colMax = Math.max(1, ...months.map((_, i) => names.reduce((a, n) => a + series[n][i], 0)));
+    const niceMax = Math.max(colMax, 2);
+    const bw = (W - padL - 10) / months.length;
+    const barW = Math.min(40, bw * 0.6);
+
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    svg.setAttribute('width', '100%');
+    svg.style.maxWidth = W + 'px';
+
+    // y gridlines
+    for (let g = 0; g <= niceMax; g += Math.ceil(niceMax / 4)) {
+      const y = padT + plotH - (g / niceMax) * plotH;
+      const line = document.createElementNS(NS, 'line');
+      line.setAttribute('x1', padL); line.setAttribute('x2', W - 6);
+      line.setAttribute('y1', y); line.setAttribute('y2', y);
+      line.setAttribute('stroke', '#2a3357'); line.setAttribute('stroke-width', '1');
+      svg.appendChild(line);
+      const lbl = document.createElementNS(NS, 'text');
+      lbl.setAttribute('x', padL - 6); lbl.setAttribute('y', y + 3);
+      lbl.setAttribute('text-anchor', 'end'); lbl.setAttribute('fill', '#93a0c4');
+      lbl.setAttribute('font-size', '10'); lbl.textContent = g;
+      svg.appendChild(lbl);
+    }
+
+    months.forEach((m, i) => {
+      const x = padL + i * bw + (bw - barW) / 2;
+      let yCursor = padT + plotH;
+      names.forEach(n => {
+        const v = series[n][i];
+        if (!v) return;
+        const h = (v / niceMax) * plotH;
+        yCursor -= h;
+        const rect = document.createElementNS(NS, 'rect');
+        rect.setAttribute('x', x); rect.setAttribute('y', yCursor);
+        rect.setAttribute('width', barW); rect.setAttribute('height', h);
+        rect.setAttribute('fill', COLORS[n] || '#94a3b8');
+        const title = document.createElementNS(NS, 'title');
+        title.textContent = `${n} — ${m}: ${v}`;
+        rect.appendChild(title);
+        svg.appendChild(rect);
+      });
+      const lbl = document.createElementNS(NS, 'text');
+      lbl.setAttribute('x', x + barW / 2); lbl.setAttribute('y', H - 10);
+      lbl.setAttribute('text-anchor', 'middle'); lbl.setAttribute('fill', '#93a0c4');
+      lbl.setAttribute('font-size', '10');
+      lbl.textContent = m.slice(5); // MM
+      svg.appendChild(lbl);
+    });
+
+    document.getElementById('chart').appendChild(svg);
+  })();
+</script>
+</body>
+</html>
