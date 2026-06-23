@@ -40,31 +40,39 @@ def _post(path, payload):
     return r.json()
 
 
-def load_plaid_tokens():
-    """All stored access tokens (one per connected bank). Stored as a JSON list;
-    falls back to treating a bare string as a single legacy token."""
+def load_plaid_items():
+    """Stored connections, one per bank, as {access_token, institution_id}.
+    Tolerates legacy shapes (a JSON list of bare tokens, or a single token)."""
     raw = (read_tokens(_PROVIDER) or {}).get("access_token") or ""
     if not raw:
         return []
     try:
         v = json.loads(raw)
-        if isinstance(v, list):
-            return [t for t in v if t]
-        if isinstance(v, str) and v:
-            return [v]
     except (ValueError, TypeError):
-        return [raw]
-    return []
-
-
-def store_plaid_tokens(tokens):
-    seen = set()
+        return [{"access_token": raw, "institution_id": ""}]
+    if isinstance(v, str) and v:
+        return [{"access_token": v, "institution_id": ""}]
     out = []
-    for t in tokens:
-        if t and t not in seen:
-            seen.add(t)
-            out.append(t)
-    write_tokens(_PROVIDER, {"access_token": json.dumps(out)})
+    if isinstance(v, list):
+        for x in v:
+            if isinstance(x, dict) and x.get("access_token"):
+                out.append({"access_token": x["access_token"], "institution_id": x.get("institution_id") or ""})
+            elif isinstance(x, str) and x:
+                out.append({"access_token": x, "institution_id": ""})
+    return out
+
+
+def store_plaid_items(items):
+    write_tokens(_PROVIDER, {"access_token": json.dumps(items)})
+
+
+def _institution_id(access_token):
+    try:
+        r = _post("/item/get", {"access_token": access_token})
+        return ((r.get("item") or {}).get("institution_id")) or ""
+    except Exception:
+        logger.exception("plaid /item/get failed")
+        return ""
 
 
 def create_hosted_link():
@@ -143,13 +151,13 @@ def _norm_account(a):
 
 def fetch_plaid_balances():
     """Live balances across every connected bank. None if nothing is connected."""
-    tokens = load_plaid_tokens()
-    if not tokens:
+    items = load_plaid_items()
+    if not items:
         return None
     accounts = []
-    for tok in tokens:
+    for it in items:
         try:
-            data = _post("/accounts/balance/get", {"access_token": tok})
+            data = _post("/accounts/balance/get", {"access_token": it["access_token"]})
             accounts.extend(_norm_account(a) for a in (data.get("accounts") or []))
         except Exception:
             logger.exception("plaid balance fetch failed for one item; skipping it")
@@ -157,26 +165,41 @@ def fetch_plaid_balances():
 
 
 def complete_link(link_token):
-    """Poll a Hosted Link session. Returns (status, accounts):
-      'pending'   -> user has not finished yet
-      'connected' -> every bank in the session exchanged + stored
-
-    Exchanges ALL public tokens (one per bank) and replaces the stored set with
-    this session's, so connecting multiple banks in one flow works cleanly.
+    """Poll a Hosted Link session; when finished, exchange the public token(s)
+    and MERGE the bank(s) into the stored set, one entry per institution (newest
+    wins). Connecting banks across separate sessions accumulates instead of
+    replacing, and reconnecting a bank refreshes it rather than duplicating.
+    Returns (status, accounts).
     """
     res = _post("/link/token/get", {"link_token": link_token})
     public_tokens = _extract_public_tokens(res)
     if not public_tokens:
         return "pending", []
-    access_tokens = []
+
+    items = load_plaid_items()
+    # Backfill institution ids on legacy entries so dedup is reliable.
+    for it in items:
+        if not it.get("institution_id") and it.get("access_token"):
+            it["institution_id"] = _institution_id(it["access_token"])
+
+    by_inst = {it["institution_id"]: it for it in items if it.get("institution_id")}
+    no_inst = [it for it in items if not it.get("institution_id")]
+
     for pt in public_tokens:
         try:
             exchanged = _post("/item/public_token/exchange", {"public_token": pt})
             at = exchanged.get("access_token")
-            if at:
-                access_tokens.append(at)
+            if not at:
+                continue
+            inst = _institution_id(at)
+            entry = {"access_token": at, "institution_id": inst}
+            if inst:
+                by_inst[inst] = entry
+            else:
+                no_inst.append(entry)
         except Exception:
             logger.exception("plaid exchange failed for one public_token; skipping")
-    store_plaid_tokens(access_tokens)
+
+    store_plaid_items(list(by_inst.values()) + no_inst)
     accounts = fetch_plaid_balances() or []
     return "connected", accounts
