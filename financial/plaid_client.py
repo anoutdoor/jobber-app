@@ -41,24 +41,26 @@ def _post(path, payload):
 
 
 def load_plaid_items():
-    """Stored connections, one per bank, as {access_token, institution_id}.
-    Tolerates legacy shapes (a JSON list of bare tokens, or a single token)."""
+    """Stored connections as {access_token, fingerprint}. The fingerprint
+    (institution + account masks) distinguishes different logins at the SAME
+    bank, while a reconnected login keeps the same fingerprint and refreshes.
+    Tolerates legacy shapes (bare token list, single token, old institution_id)."""
     raw = (read_tokens(_PROVIDER) or {}).get("access_token") or ""
     if not raw:
         return []
     try:
         v = json.loads(raw)
     except (ValueError, TypeError):
-        return [{"access_token": raw, "institution_id": ""}]
+        return [{"access_token": raw, "fingerprint": ""}]
     if isinstance(v, str) and v:
-        return [{"access_token": v, "institution_id": ""}]
+        return [{"access_token": v, "fingerprint": ""}]
     out = []
     if isinstance(v, list):
         for x in v:
             if isinstance(x, dict) and x.get("access_token"):
-                out.append({"access_token": x["access_token"], "institution_id": x.get("institution_id") or ""})
+                out.append({"access_token": x["access_token"], "fingerprint": x.get("fingerprint") or ""})
             elif isinstance(x, str) and x:
-                out.append({"access_token": x, "institution_id": ""})
+                out.append({"access_token": x, "fingerprint": ""})
     return out
 
 
@@ -66,13 +68,18 @@ def store_plaid_items(items):
     write_tokens(_PROVIDER, {"access_token": json.dumps(items)})
 
 
-def _institution_id(access_token):
+def _fingerprint_for(access_token):
+    """Identity of a connection: institution + its sorted account masks. Two
+    different logins at one bank differ (different masks); the same login
+    reconnected matches, so it refreshes instead of duplicating."""
     try:
-        r = _post("/item/get", {"access_token": access_token})
-        return ((r.get("item") or {}).get("institution_id")) or ""
+        data = _post("/accounts/balance/get", {"access_token": access_token})
     except Exception:
-        logger.exception("plaid /item/get failed")
+        logger.exception("plaid fingerprint fetch failed")
         return ""
+    inst = ((data.get("item") or {}).get("institution_id")) or ""
+    masks = sorted((a.get("mask") or a.get("account_id") or "") for a in (data.get("accounts") or []))
+    return inst + "|" + ",".join(masks)
 
 
 def create_hosted_link():
@@ -177,13 +184,13 @@ def complete_link(link_token):
         return "pending", []
 
     items = load_plaid_items()
-    # Backfill institution ids on legacy entries so dedup is reliable.
+    # Backfill fingerprints on legacy entries so dedup is reliable.
     for it in items:
-        if not it.get("institution_id") and it.get("access_token"):
-            it["institution_id"] = _institution_id(it["access_token"])
+        if not it.get("fingerprint") and it.get("access_token"):
+            it["fingerprint"] = _fingerprint_for(it["access_token"])
 
-    by_inst = {it["institution_id"]: it for it in items if it.get("institution_id")}
-    no_inst = [it for it in items if not it.get("institution_id")]
+    by_fp = {it["fingerprint"]: it for it in items if it.get("fingerprint")}
+    no_fp = [it for it in items if not it.get("fingerprint")]
 
     for pt in public_tokens:
         try:
@@ -191,15 +198,15 @@ def complete_link(link_token):
             at = exchanged.get("access_token")
             if not at:
                 continue
-            inst = _institution_id(at)
-            entry = {"access_token": at, "institution_id": inst}
-            if inst:
-                by_inst[inst] = entry
+            fp = _fingerprint_for(at)
+            entry = {"access_token": at, "fingerprint": fp}
+            if fp:
+                by_fp[fp] = entry
             else:
-                no_inst.append(entry)
+                no_fp.append(entry)
         except Exception:
             logger.exception("plaid exchange failed for one public_token; skipping")
 
-    store_plaid_items(list(by_inst.values()) + no_inst)
+    store_plaid_items(list(by_fp.values()) + no_fp)
     accounts = fetch_plaid_balances() or []
     return "connected", accounts
