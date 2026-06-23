@@ -385,7 +385,8 @@ def bank_connect():
 
 @app.route("/bank-balances", methods=["GET", "OPTIONS"])
 def bank_balances():
-    """Read-only account balances from the stored SimpleFIN connection."""
+    """Read-only account balances. Prefers a live Plaid connection; falls back
+    to the SimpleFIN cache if that is what is connected."""
     if request.method == "OPTIONS":
         return _payroll_cors(app.make_response(("", 204)))
     if not _api_key_ok():
@@ -393,10 +394,23 @@ def bank_balances():
         resp.status_code = 401
         return _payroll_cors(resp)
 
+    # Live Plaid first.
+    try:
+        from financial.plaid_client import fetch_plaid_balances
+        plaid_accounts = fetch_plaid_balances()
+        if plaid_accounts is not None:
+            return _payroll_cors(jsonify({"ok": True, "source": "plaid", "accounts": plaid_accounts}))
+    except Exception as e:
+        logger.exception("plaid balances failed")
+        resp = jsonify({"error": "fetch_failed", "message": str(e)[:200]})
+        resp.status_code = 502
+        return _payroll_cors(resp)
+
+    # SimpleFIN fallback.
     from financial.bank import load_access_url, fetch_accounts
     access_url = load_access_url()
     if not access_url:
-        resp = jsonify({"error": "not_connected", "message": "No SimpleFIN connection yet."})
+        resp = jsonify({"error": "not_connected", "message": "No bank connection yet."})
         resp.status_code = 409
         return _payroll_cors(resp)
     try:
@@ -407,7 +421,56 @@ def bank_balances():
         resp.status_code = 502
         return _payroll_cors(resp)
 
-    return _payroll_cors(jsonify({"ok": True, "accounts": accounts, "errors": errors}))
+    return _payroll_cors(jsonify({"ok": True, "source": "simplefin", "accounts": accounts, "errors": errors}))
+
+
+@app.route("/plaid-link-token", methods=["POST", "OPTIONS"])
+def plaid_link_token():
+    """Create a Plaid Hosted Link session for the cash tracker to open."""
+    if request.method == "OPTIONS":
+        return _payroll_cors(app.make_response(("", 204)))
+    if not _api_key_ok():
+        resp = jsonify({"error": "unauthorized"})
+        resp.status_code = 401
+        return _payroll_cors(resp)
+    from financial.plaid_client import create_hosted_link
+    try:
+        data = create_hosted_link()
+    except Exception as e:
+        logger.exception("plaid-link-token failed")
+        resp = jsonify({"error": "link_token_failed", "message": str(e)[:200]})
+        resp.status_code = 502
+        return _payroll_cors(resp)
+    return _payroll_cors(jsonify({"ok": True, **data}))
+
+
+@app.route("/plaid-complete", methods=["POST", "OPTIONS"])
+def plaid_complete():
+    """Poll a Hosted Link session; once the user finishes, exchange and store the
+    token and return live balances. Returns {pending: true} until then."""
+    if request.method == "OPTIONS":
+        return _payroll_cors(app.make_response(("", 204)))
+    if not _api_key_ok():
+        resp = jsonify({"error": "unauthorized"})
+        resp.status_code = 401
+        return _payroll_cors(resp)
+    data = request.get_json(silent=True) or {}
+    link_token = (data.get("link_token") or "").strip()
+    if not link_token:
+        resp = jsonify({"error": "missing_link_token"})
+        resp.status_code = 400
+        return _payroll_cors(resp)
+    from financial.plaid_client import complete_link
+    try:
+        status, accounts = complete_link(link_token)
+    except Exception as e:
+        logger.exception("plaid-complete failed")
+        resp = jsonify({"error": "complete_failed", "message": str(e)[:200]})
+        resp.status_code = 502
+        return _payroll_cors(resp)
+    if status == "pending":
+        return _payroll_cors(jsonify({"ok": True, "pending": True}))
+    return _payroll_cors(jsonify({"ok": True, "pending": False, "source": "plaid", "accounts": accounts}))
 
 
 @app.route("/api/summary", methods=["GET", "OPTIONS"])
