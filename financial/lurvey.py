@@ -53,17 +53,28 @@ def fetch_lurvey_debug():
     """Logged-in account page, summarized so we can find where the balance is."""
     s = _login_session()
     html = s.get(_ACCOUNT, timeout=30).text
-    logged_in = ("customer-logout" in html) or ("/my-account/orders" in html) or ("Log out" in html.lower())
+    logged_in = ("customer-logout" in html) or ("/my-account/orders" in html) or ("log out" in html.lower())
+
+    # The my-account navigation links (reveal sub-pages like statement/invoices).
+    menu, seen = [], set()
+    for m in re.finditer(r'href="([^"]*?/my-account/[^"]*)"[^>]*>\s*([^<]{0,60})', html):
+        href = m.group(1)
+        txt = re.sub(r"\s+", " ", m.group(2)).strip()
+        if href not in seen:
+            seen.add(href)
+            menu.append({"text": txt or "(no text)", "href": href})
+
     text = _text(html)
-    dollars = []
-    for m in re.finditer(r"\$[\d,]+\.\d{2}", text):
-        dollars.append(text[max(0, m.start() - 55):m.end() + 25].strip())
+    money = []
+    for m in re.finditer(r"\$\s?[\d,]+(?:\.\d{1,2})?|\b[\d,]+\.\d{2}\b", text):
+        money.append(text[max(0, m.start() - 50):m.end() + 20].strip())
     keywords = []
-    for m in re.finditer(r"(balance|credit|account funds|amount due|outstanding|statement)", text, re.I):
-        keywords.append(text[max(0, m.start() - 25):m.end() + 60].strip())
+    for m in re.finditer(r"(balance|credit|owe|amount due|outstanding|statement|invoice|ledger|account funds|past due|terms)", text, re.I):
+        keywords.append(text[max(0, m.start() - 25):m.end() + 70].strip())
     return {
         "logged_in": logged_in,
-        "dollar_hits": dollars[:25],
+        "account_menu": menu[:30],
+        "money": money[:25],
         "keyword_context": keywords[:25],
         "page_chars": len(html),
     }
