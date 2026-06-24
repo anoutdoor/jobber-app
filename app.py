@@ -596,20 +596,29 @@ def cash_state():
     return _payroll_cors(jsonify({"ok": True}))
 
 
-@app.route("/lurvey-debug", methods=["GET"])
-def lurvey_debug():
-    """Temporary: log into Lurvey's and report dollar amounts + keyword context
-    so we can locate the account balance on the page. Key-gated."""
+@app.route("/lurvey-balance", methods=["GET", "OPTIONS"])
+def lurvey_balance():
+    """Read-only Lurvey's AP balance + credit info for the cash tracker. Logs
+    into lurveys.com and reads the Modern Retail account-summary. Key-gated."""
+    if request.method == "OPTIONS":
+        return _payroll_cors(app.make_response(("", 204)))
     if not _api_key_ok():
         resp = jsonify({"error": "unauthorized"})
         resp.status_code = 401
-        return resp
-    from financial.lurvey import fetch_lurvey_debug
+        return _payroll_cors(resp)
+    from financial.lurvey import fetch_lurvey_balance
     try:
-        return jsonify(fetch_lurvey_debug())
+        data = fetch_lurvey_balance()
     except Exception as e:
-        logger.exception("lurvey-debug failed")
-        return jsonify({"error": "lurvey_failed", "message": str(e)[:300]})
+        logger.exception("lurvey-balance failed")
+        resp = jsonify({"error": "fetch_failed", "message": str(e)[:200]})
+        resp.status_code = 502
+        return _payroll_cors(resp)
+    if data is None:
+        resp = jsonify({"error": "lurvey_auth", "message": "Lurvey login failed or account config not found."})
+        resp.status_code = 502
+        return _payroll_cors(resp)
+    return _payroll_cors(jsonify({"ok": True, **data}))
 
 
 @app.route("/financial-debug")
