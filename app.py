@@ -596,6 +596,22 @@ def cash_state():
     return _payroll_cors(jsonify({"ok": True}))
 
 
+@app.route("/lurvey-debug", methods=["GET"])
+def lurvey_debug():
+    """Temporary: log into Lurvey's and report dollar amounts + keyword context
+    so we can locate the account balance on the page. Key-gated."""
+    if not _api_key_ok():
+        resp = jsonify({"error": "unauthorized"})
+        resp.status_code = 401
+        return resp
+    from financial.lurvey import fetch_lurvey_debug
+    try:
+        return jsonify(fetch_lurvey_debug())
+    except Exception as e:
+        logger.exception("lurvey-debug failed")
+        return jsonify({"error": "lurvey_failed", "message": str(e)[:300]})
+
+
 @app.route("/financial-debug")
 def financial_debug():
     """Dump raw responses from each Jobber query so we can see which ones
