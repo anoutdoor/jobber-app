@@ -49,32 +49,46 @@ def _text(html):
     return re.sub(r"\s+", " ", t).strip()
 
 
-def fetch_lurvey_debug():
-    """Logged-in account page, summarized so we can find where the balance is."""
-    s = _login_session()
-    html = s.get(_ACCOUNT, timeout=30).text
-    logged_in = ("customer-logout" in html) or ("/my-account/orders" in html) or ("log out" in html.lower())
-
-    # The my-account navigation links (reveal sub-pages like statement/invoices).
-    menu, seen = [], set()
-    for m in re.finditer(r'href="([^"]*?/my-account/[^"]*)"[^>]*>\s*([^<]{0,60})', html):
-        href = m.group(1)
-        txt = re.sub(r"\s+", " ", m.group(2)).strip()
-        if href not in seen:
-            seen.add(href)
-            menu.append({"text": txt or "(no text)", "href": href})
-
-    text = _text(html)
-    money = []
+def _money(text, n=20):
+    out = []
     for m in re.finditer(r"\$\s?[\d,]+(?:\.\d{1,2})?|\b[\d,]+\.\d{2}\b", text):
-        money.append(text[max(0, m.start() - 50):m.end() + 20].strip())
-    keywords = []
-    for m in re.finditer(r"(balance|credit|owe|amount due|outstanding|statement|invoice|ledger|account funds|past due|terms)", text, re.I):
-        keywords.append(text[max(0, m.start() - 25):m.end() + 70].strip())
-    return {
+        out.append(text[max(0, m.start() - 45):m.end() + 25].strip())
+    return out[:n]
+
+
+def fetch_lurvey_debug():
+    """Probe the dashboard + orders page to find where the balance lives."""
+    s = _login_session()
+    dash = s.get(_ACCOUNT, timeout=30).text
+    logged_in = ("customer-logout" in dash) or ("/my-account/orders" in dash) or ("log out" in dash.lower())
+
+    # AJAX / REST hints (the balance may be fetched client-side).
+    ajax = sorted(set(re.findall(r'(admin-ajax\.php|/wp-json/[a-z0-9/_-]+)', dash, re.I)))[:15]
+    # Embedded scripts mentioning balance/account/credit.
+    scripts = []
+    for m in re.finditer(r"(balance|account_balance|store_credit|amount_due|open_balance)", dash, re.I):
+        scripts.append(dash[max(0, m.start() - 40):m.end() + 80])
+    scripts = scripts[:10]
+
+    out = {
         "logged_in": logged_in,
-        "account_menu": menu[:30],
-        "money": money[:25],
-        "keyword_context": keywords[:25],
-        "page_chars": len(html),
+        "dash_money": _money(_text(dash)),
+        "ajax_hints": ajax,
+        "balance_script_hits": scripts,
     }
+
+    # Orders page: unpaid order totals could be the AP balance.
+    try:
+        orders_html = s.get(_BASE + "/my-account/orders/", timeout=30).text
+        otext = _text(orders_html)
+        out["orders_money"] = _money(otext)
+        out["orders_statuses"] = sorted(set(re.findall(r"\b(Pending(?: payment)?|Processing|On hold|Completed|Cancelled|Refunded|Failed|Open|Unpaid|Awaiting)\b", otext, re.I)))[:12]
+        # quick row context around "Total"/"View"
+        rows = []
+        for m in re.finditer(r"(Order|#\d{3,})[^$]{0,120}\$\s?[\d,]+(?:\.\d{2})?", otext):
+            rows.append(m.group(0).strip()[:160])
+        out["orders_rows"] = rows[:12]
+    except Exception as e:
+        out["orders_error"] = str(e)[:150]
+
+    return out
