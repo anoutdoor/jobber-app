@@ -70,11 +70,22 @@ def fetch_lurvey_debug():
         scripts.append(dash[max(0, m.start() - 40):m.end() + 80])
     scripts = scripts[:10]
 
+    # Dump the JS config block around the credit/balance labels so we can find
+    # the ajax action, nonce, and url the page uses to load the numbers.
+    cfg = ""
+    mk = re.search(r"Credit Limit", dash)
+    if mk:
+        cfg = dash[max(0, mk.start() - 1400):mk.end() + 1400]
+    # Also surface any nonce-looking and action-looking fields near it.
+    nonces = re.findall(r"(nonce|action|ajax_url|ajaxurl|security)\s*[:=]\s*['\"]?([\w\-/.]+)", cfg)
+
     out = {
         "logged_in": logged_in,
         "dash_money": _money(_text(dash)),
         "ajax_hints": ajax,
         "balance_script_hits": scripts,
+        "config_block": cfg,
+        "config_fields": nonces[:30],
     }
 
     # Orders page: unpaid order totals could be the AP balance.
