@@ -237,7 +237,7 @@ def _payroll_cors(resp):
         resp.headers["Access-Control-Allow-Origin"] = origin
         resp.headers["Vary"] = "Origin"
         resp.headers["Access-Control-Allow-Headers"] = "X-Api-Key, Content-Type"
-        resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        resp.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, OPTIONS"
         resp.headers["Access-Control-Max-Age"] = "86400"
     return resp
 
@@ -556,6 +556,44 @@ def payouts():
         resp.status_code = 502
         return _payroll_cors(resp)
     return _payroll_cors(jsonify({"ok": True, **data}))
+
+
+@app.route("/cash-state", methods=["GET", "PUT", "OPTIONS"])
+def cash_state():
+    """Cross-device store for the cash tracker's full state. GET returns the
+    saved state (null if none); PUT overwrites it. Key-gated and CORS-locked."""
+    if request.method == "OPTIONS":
+        return _payroll_cors(app.make_response(("", 204)))
+    if not _api_key_ok():
+        resp = jsonify({"error": "unauthorized"})
+        resp.status_code = 401
+        return _payroll_cors(resp)
+
+    from financial.cash_state import load_cash_state, save_cash_state
+    if request.method == "GET":
+        try:
+            state = load_cash_state()
+        except Exception as e:
+            logger.exception("cash-state load failed")
+            resp = jsonify({"error": "load_failed", "message": str(e)[:200]})
+            resp.status_code = 502
+            return _payroll_cors(resp)
+        return _payroll_cors(jsonify({"ok": True, "state": state}))
+
+    body = request.get_json(silent=True) or {}
+    state = body.get("state")
+    if not isinstance(state, dict):
+        resp = jsonify({"error": "bad_state", "message": "Missing or invalid state object."})
+        resp.status_code = 400
+        return _payroll_cors(resp)
+    try:
+        save_cash_state(state)
+    except Exception as e:
+        logger.exception("cash-state save failed")
+        resp = jsonify({"error": "save_failed", "message": str(e)[:200]})
+        resp.status_code = 502
+        return _payroll_cors(resp)
+    return _payroll_cors(jsonify({"ok": True}))
 
 
 @app.route("/financial-debug")
