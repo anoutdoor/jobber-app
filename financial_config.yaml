@@ -139,10 +139,12 @@ payroll:
   # Names excluded from the payroll-owed accrual (owners + anyone paid outside
   # regular crew payroll). Matched on first name, case-insensitive.
   exclude_names: [Arturo, Alex, Niko, Brock]
-  # The LAST DAY (Sunday) of the most recently paid-out pay period.
-  # Accrual window = day after this through 'now'. Update this each
-  # Thursday after payroll lands.
-  last_payroll_paid_through: "2026-06-14"
+  # OPTIONAL manual override. Normally LEAVE BLANK: the accrual window resets
+  # automatically every Thursday (crew is paid each Wednesday for the prior
+  # Mon-Sun week). Only set this (to the Sunday you actually paid through) if
+  # you pay off-cycle or ahead; it is honored only when MORE recent than the
+  # automatic reset, so a stale value never over-counts.
+  last_payroll_paid_through: ""
 
 # Mow P&L model (used by /mow-dashboard). Edit rates here; the dashboard reloads
 # on its next refresh. Both crew members are on every mow, so direct labor =

@@ -357,38 +357,43 @@ query AllUsers($cursor: String) {
 
 
 def current_pay_week_start(today=None):
-    """Start date for the unpaid payroll accrual window.
+    """Start date (a Monday) of the unpaid payroll accrual window.
 
-    Primary source: payroll.last_payroll_paid_through in financial_config.yaml.
-    Set that to the LAST DAY (Sunday) of the most recently paid pay period.
-    Accrual then starts the day after.
+    The crew is paid every Wednesday for the prior Mon-Sun week, so the unpaid
+    window resets automatically each Thursday, no manual upkeep:
+      - Mon/Tue/Wed: this week's Wednesday payout hasn't run yet, so last week
+        is still owed -> window starts LAST week's Monday.
+      - Thu-Sun: last week was paid out Wednesday -> window starts THIS week's
+        Monday (only the current week is owed).
 
-    Workflow: each Thursday after payroll lands, Alex updates the config
-    value to that pay period's Sunday (same moment he updates Chase Checking
-    balance to reflect the post-payroll cash).
-
-    Falls back to a day-of-week heuristic if the config value is missing,
-    invalid, or absurdly old (>14 days).
+    payroll.last_payroll_paid_through in financial_config.yaml is an OPTIONAL
+    manual override (the Sunday you actually paid through) for paying off-cycle
+    or ahead. It is honored only when it is MORE recent than the automatic
+    reset, so a stale value can never drag the window backward and over-count.
     """
     today = today or date.today()
 
+    # Automatic reset from the Wednesday-payout / Thursday-reset cycle.
+    wd = today.weekday()  # Mon=0 .. Sun=6
+    if wd <= 2:
+        auto_start = today - timedelta(days=wd + 7)  # last week's Monday
+    else:
+        auto_start = today - timedelta(days=wd)      # this week's Monday
+
+    # Optional manual override, honored only if it moves the start forward.
     try:
         # Local import to avoid circular dep with financial.config
         from financial.config import payroll_settings
         last_paid_str = (payroll_settings() or {}).get("last_payroll_paid_through")
         if last_paid_str:
             last_paid = date.fromisoformat(str(last_paid_str))
-            age = (today - last_paid).days
-            if 0 <= age <= 14:
-                return last_paid + timedelta(days=1)
+            manual_start = last_paid + timedelta(days=1)
+            if last_paid <= today and manual_start > auto_start:
+                return manual_start
     except (ValueError, TypeError, ImportError):
         pass
 
-    # Heuristic fallback: Mon-Wed include last week, Thu-Sun current only.
-    wd = today.weekday()
-    if wd <= 2:
-        return today - timedelta(days=wd + 7)
-    return today - timedelta(days=wd)
+    return auto_start
 
 
 def fetch_users():
