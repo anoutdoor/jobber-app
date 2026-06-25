@@ -527,8 +527,31 @@ def api_summary():
     except Exception:
         logger.exception("api/summary marketing failed")
 
+    financials = None
+    try:
+        # Latest month from the P&L dashboard's data file (same numbers the
+        # /financials dashboard headlines). Read-only file read, no network.
+        import json as _json
+        pnl_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "financial_dashboard", "pnl.json"
+        )
+        with open(pnl_path) as fh:
+            months = (_json.load(fh) or {}).get("months") or []
+        if months:
+            m = months[-1]
+            financials = {
+                "month_label": m.get("label"),
+                "revenue": m.get("revenue"),
+                "net_profit": m.get("netProfit"),
+                "net_margin": m.get("netMargin"),
+                "gross_margin": m.get("grossMargin"),
+            }
+    except Exception:
+        logger.exception("api/summary financials failed")
+
     return _payroll_cors(jsonify({
-        "ok": True, "job_costing": job_costing, "mowing": mowing, "marketing": marketing_block,
+        "ok": True, "job_costing": job_costing, "mowing": mowing,
+        "marketing": marketing_block, "financials": financials,
     }))
 
 
