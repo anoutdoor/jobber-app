@@ -13,7 +13,8 @@ from backfill import run_backfill
 from scheduler import start_scheduler, stop_scheduler
 from financial import qbo as financial_qbo
 from financial import google_auth as financial_google_auth
-from financial.digest import run_digest
+from financial.digest import run_digest  # legacy QBO/sheet digest (kept for reference)
+from financial.cash_email import run_cash_digest
 from financial.pnl_reminder import send_pnl_reminder
 from mow_time_export import main as run_mow_export
 import marketing
@@ -199,7 +200,22 @@ def digest_now():
     if "access_token" not in session:
         return redirect(url_for("login"))
     dry = request.args.get("dry") == "1"
-    result = run_digest(dry_run=dry)
+    result = run_cash_digest(dry_run=dry)
+    if dry and "html" in result:
+        return result["html"]
+    return jsonify({k: v for k, v in result.items() if k != "html"})
+
+
+@app.route("/cash-digest-now", methods=["GET"])
+def cash_digest_now():
+    """Fire (or preview) the cash-position email. ?dry=1 renders the HTML
+    without sending. Key-gated so it works without a browser session."""
+    if not _api_key_ok():
+        resp = jsonify({"error": "unauthorized"})
+        resp.status_code = 401
+        return resp
+    dry = request.args.get("dry") == "1"
+    result = run_cash_digest(dry_run=dry)
     if dry and "html" in result:
         return result["html"]
     return jsonify({k: v for k, v in result.items() if k != "html"})
@@ -1154,7 +1170,7 @@ if __name__ == "__main__":
 
     # Avoid double-start from Flask's reloader spawning a second process
     if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not app.debug:
-        start_scheduler(run_sync, reconcile_daily_overhead, digest_fn=run_digest,
+        start_scheduler(run_sync, reconcile_daily_overhead, digest_fn=run_cash_digest,
                         mow_export_fn=run_mow_export,
                         pnl_reminder_fn=send_pnl_reminder,
                         marketing_refresh_fn=marketing.refresh)
