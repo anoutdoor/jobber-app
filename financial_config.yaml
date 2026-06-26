@@ -7,6 +7,12 @@ email:
   subject_prefix: "A&N Daily Cashflow"
   send_hour_ct: 6      # 24h local time. Scheduler is timezone-aware.
 
+# Traffic-light thresholds for the daily cash email, applied to the month-end
+# cushion (free cash left after this month's bills + money coming in).
+cash_status:
+  green_min: 10000     # >= this = green (comfortable)
+  yellow_min: 0        # >= this = yellow (positive but tight); below = red
+
 # Bank + credit card accounts. Balances come from this list and (optionally)
 # from the "Balance Overrides" Google Sheet tab; Sheet entries (id-keyed) win.
 # type: "Bank" = cash on hand (positive number = money you have)
