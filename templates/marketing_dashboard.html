@@ -76,9 +76,11 @@
 <div class="wrap">
 
   {% set channel_colors = {
-    'SEO': '#6366f1', 'Door Hanger': '#f1b434', 'Facebook Group': '#38bdf8',
-    'Referral': '#34d399', 'Google Ads': '#fb7185', 'Meta Ads': '#a78bfa',
-    'Other': '#94a3b8', 'Unattributed': '#475569'
+    'SEO': '#6366f1', 'Google LSA': '#22d3ee', 'Google Ads': '#fb7185',
+    'Meta Ads': '#a78bfa', 'Facebook': '#38bdf8', 'Nextdoor': '#2dd4bf',
+    'Door Hanger': '#f1b434', 'Email': '#f97316', 'Referral': '#34d399',
+    'Repeat / Existing': '#c084fc', 'Truck / Yard Sign': '#facc15',
+    'AI Search': '#e879f9', 'Other': '#94a3b8', 'Unattributed': '#475569'
   } %}
   {% macro money(v) %}{% if v is none %}<span class="muted">—</span>{% else %}${{ '{:,.0f}'.format(v) }}{% endif %}{% endmacro %}
   {% macro money2(v) %}{% if v is none %}<span class="muted">—</span>{% else %}${{ '{:,.2f}'.format(v) }}{% endif %}{% endmacro %}
@@ -223,9 +225,11 @@
 <script>
   const TREND = {{ trend_json | safe }};
   const COLORS = {
-    'SEO': '#6366f1', 'Door Hanger': '#f1b434', 'Facebook Group': '#38bdf8',
-    'Referral': '#34d399', 'Google Ads': '#fb7185', 'Meta Ads': '#a78bfa',
-    'Other': '#94a3b8', 'Unattributed': '#475569'
+    'SEO': '#6366f1', 'Google LSA': '#22d3ee', 'Google Ads': '#fb7185',
+    'Meta Ads': '#a78bfa', 'Facebook': '#38bdf8', 'Nextdoor': '#2dd4bf',
+    'Door Hanger': '#f1b434', 'Email': '#f97316', 'Referral': '#34d399',
+    'Repeat / Existing': '#c084fc', 'Truck / Yard Sign': '#facc15',
+    'AI Search': '#e879f9', 'Other': '#94a3b8', 'Unattributed': '#475569'
   };
 
   (function drawChart() {

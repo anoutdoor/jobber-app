@@ -46,22 +46,71 @@ SPEND_HEADERS = [
 # The fixed list of channels the dashboard reports on. Google/Meta Ads sit here
 # as placeholders until those campaigns actually start. "Unattributed" is shown
 # separately as a data-quality signal (clients with no lead source set).
+# Channels the dashboard reports on. Derived from a live audit of the real
+# leadSource values in Jobber (June 2026), since Jobber has no way to edit/merge
+# a client's lead source after creation (clientEdit has no lead-source field) and
+# deleting a source in the UI unlinks it from every client. So all consolidation
+# happens here in the mapping, not in Jobber. Google Ads is a placeholder until
+# those campaigns start. Order = how rows render (primary channels first).
 CANONICAL_SOURCES = [
-    "SEO", "Door Hanger", "Facebook Group", "Referral", "Google Ads", "Meta Ads", "Other",
+    "SEO", "Google LSA", "Google Ads", "Meta Ads", "Facebook", "Nextdoor",
+    "Door Hanger", "Email", "Referral", "Repeat / Existing",
+    "Truck / Yard Sign", "AI Search", "Other",
 ]
 UNATTRIBUTED = "Unattributed"
 
-# Ordered keyword rules, first match wins. Paid-ads rules come BEFORE the organic
-# ones so "google ads" -> Google Ads (not SEO) and "facebook ad" -> Meta Ads
-# (not Facebook Group). Everything Alex might type into Jobber's lead source
-# should land in exactly one canonical bucket; tweak freely as real values show up.
+# App/integration-created clients get the app name stamped as their lead source
+# (Jobber does this automatically). That's not a marketing channel — the real
+# source is unknown — so these roll up to Unattributed.
+INTEGRATION_NOISE = {"openphone", "quo", "zapier", "api", "jobber", "import"}
+
+# Exact-match overrides for the specific messy values seen in the audit. Checked
+# before the keyword rules so a value like "Joe Salemi" (a referrer's name typed
+# into the field) lands in Referral instead of Other. Keys are lower-cased.
+SOURCE_OVERRIDES = {
+    "google": "SEO",
+    "lsa": "Google LSA",
+    "facebook": "Facebook",
+    "facebook ad": "Meta Ads",
+    "nextdoor": "Nextdoor",
+    "neighbor": "Referral",
+    "referral": "Referral",
+    "joe salemi": "Referral",
+    "joe": "Referral",
+    "the mulch center referall": "Referral",
+    "village of palatine": "Referral",
+    "personal connection": "Repeat / Existing",
+    "existing client": "Repeat / Existing",
+    "past client": "Repeat / Existing",
+    "saw truck": "Truck / Yard Sign",
+    "yard sign": "Truck / Yard Sign",
+    "flyer": "Door Hanger",
+    "door hanger (old)": "Door Hanger",
+    "grok ai": "AI Search",
+    "gemini": "AI Search",
+    "chat gpt": "AI Search",
+    "chatgpt": "AI Search",
+    "claude ai": "AI Search",
+    "other": "Other",
+}
+
+# Ordered keyword rules, first match wins. Used for anything not caught by an
+# exact override above, so new/unseen values still bucket sensibly. Paid rules
+# come before organic ones (so "google ads" -> Google Ads, not SEO). Email
+# campaign names in Jobber all end in "(Email)", hence the "(email)" key.
 SOURCE_RULES = [
-    (("google ad", "adwords", "ppc", "sem", "paid search", "google ppc"), "Google Ads"),
-    (("facebook ad", "fb ad", "meta ad", "instagram ad", "insta ad", "ig ad", "boosted"), "Meta Ads"),
-    (("door hanger", "doorhanger", "door-hanger", "hanger", "flyer", "door knock", "door-knock"), "Door Hanger"),
-    (("facebook", "fb group", "fb ", " fb", "meta group", "neighborhood group", "community group"), "Facebook Group"),
-    (("referral", "referred", "refer", "word of mouth", "neighbor", "friend", "family", "recommend", "repeat"), "Referral"),
-    (("seo", "search", "organic", "google", "website", "web search", "online", "bing", "yelp", "gmb", "maps"), "SEO"),
+    (("(email)", "email blast", "newsletter"), "Email"),
+    (("local services", "lsa"), "Google LSA"),
+    (("google ad", "adwords", "ppc", "sem", "paid search"), "Google Ads"),
+    (("facebook ad", "fb ad", "meta ad", "instagram ad", "ig ad", "boosted"), "Meta Ads"),
+    (("door hanger", "doorhanger", "door-hanger", "hanger", "flyer", "door knock"), "Door Hanger"),
+    (("nextdoor",), "Nextdoor"),
+    (("facebook", "fb group", "meta group", "neighborhood group", "community group"), "Facebook"),
+    (("referr", "referal", "referall", "word of mouth", "neighbor", "friend", "family", "recommend"), "Referral"),
+    (("repeat", "existing client", "past client", "current client", "personal connection"), "Repeat / Existing"),
+    (("truck", "yard sign", "lawn sign", "vehicle wrap", "truck wrap"), "Truck / Yard Sign"),
+    (("chatgpt", "chat gpt", "gemini", "grok", "perplexity", "copilot", "claude", "ai search"), "AI Search"),
+    (("seo", "organic", "google", "website", "web search", "online", "bing", "yelp", "gmb", "maps", "search"), "SEO"),
 ]
 
 
@@ -70,6 +119,10 @@ def normalize_source(raw):
     s = (raw or "").strip().lower()
     if not s:
         return UNATTRIBUTED
+    if s in INTEGRATION_NOISE:
+        return UNATTRIBUTED
+    if s in SOURCE_OVERRIDES:
+        return SOURCE_OVERRIDES[s]
     for keys, canon in SOURCE_RULES:
         if any(k in s for k in keys):
             return canon
