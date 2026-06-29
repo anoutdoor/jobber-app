@@ -47,6 +47,20 @@ UPSIDE_LOOKBACK_WEEKS = 8
 # only routine small extras (cleanups, mulch, small repairs) below this line.
 SMALL_ONEOFF_MAX = 2000.0
 
+# Full-year forecast (top-down, from QuickBooks P&L history). The committed band
+# above is bottom-up from the Jobber schedule; this is the statistical layer the
+# whole-year revenue number comes from. Source is the same monthly P&L the
+# financials dashboard reads.
+PNL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        "financial_dashboard", "pnl.json")
+
+# Which scenario is the headline "expected" forecast. The page shows all three as
+# a low/expected/high band; this just picks the number we lead with.
+#   conservative -> back half matches last year, no growth (factor 1.0)
+#   moderate     -> growth eases to half the current YTD pace
+#   aggressive   -> current YTD year-over-year pace holds all year
+FORECAST_EXPECTED_CASE = "moderate"
+
 # Top-level visits in a date window, each with its parent job's type + price.
 # first:100 keeps pagination cheap; the whole-year pull is ~20 pages.
 VISITS_QUERY = """
@@ -309,6 +323,108 @@ def _aggregate_monthly(weekly_rows):
 
 
 # ---------------------------------------------------------------------------
+# Full-year forecast from P&L history
+# ---------------------------------------------------------------------------
+
+def _load_pnl_revenue():
+    """Return {('YYYY-MM'): revenue} for complete months from the P&L export,
+    plus the set of keys flagged incomplete. Missing file -> empty."""
+    try:
+        with open(PNL_PATH) as f:
+            doc = json.load(f)
+    except Exception:
+        logger.warning("projections: P&L file not readable at %s", PNL_PATH)
+        return {}, set()
+    rev, incomplete = {}, set()
+    for m in doc.get("months", []):
+        k = m.get("key")
+        if not k:
+            continue
+        rev[k] = float(m.get("revenue") or 0.0)
+        if m.get("incomplete"):
+            incomplete.add(k)
+    return rev, incomplete
+
+
+def build_forecast(today):
+    """Top-down full-year revenue forecast from QuickBooks monthly history.
+
+    Method: anchor on this year's actual revenue to date, then project each
+    remaining month from the prior full year's same-month revenue scaled by a
+    growth factor. Three scenarios bracket how much of the current
+    year-over-year pace holds through the back half:
+      low  (conservative) factor 1.0   - prior year repeats, growth stalls
+      mid  (moderate)      factor 1+(g-1)/2 - growth eases to half the YTD pace
+      high (aggressive)    factor g     - current YTD YoY pace holds
+
+    Returns None if there isn't enough history (need a prior-year comparable).
+    """
+    rev, incomplete = _load_pnl_revenue()
+    if not rev:
+        return None
+
+    cur = today.year
+    prior = cur - 1
+
+    # Actual months this year = present, this year, not flagged incomplete.
+    actual_keys = sorted(k for k in rev
+                         if k.startswith(f"{cur}-") and k not in incomplete)
+    if not actual_keys:
+        return None
+    last_actual_month = int(actual_keys[-1].split("-")[1])
+
+    ytd_actual = sum(rev[k] for k in actual_keys)
+    # Same span last year, for the growth comparison.
+    prior_ytd = sum(rev.get(f"{prior}-{int(k.split('-')[1]):02d}", 0.0) for k in actual_keys)
+    prior_total = sum(rev.get(f"{prior}-{m:02d}", 0.0) for m in range(1, 13))
+
+    if prior_ytd <= 0:
+        return None  # no comparable prior year -> can't ground a growth rate
+    growth = ytd_actual / prior_ytd
+
+    factors = {
+        "low": 1.0,
+        "mid": 1.0 + (growth - 1.0) * 0.5,
+        "high": growth,
+    }
+
+    months = []
+    totals = {"low": ytd_actual, "mid": ytd_actual, "high": ytd_actual}
+    for m in range(1, 13):
+        mk = f"{cur}-{m:02d}"
+        label = date(cur, m, 1).strftime("%b")
+        if m <= last_actual_month and mk in rev:
+            v = round(rev[mk], 2)
+            months.append({"month": m, "label": label, "is_actual": True,
+                           "actual": v, "low": v, "mid": v, "high": v})
+        else:
+            base = rev.get(f"{prior}-{m:02d}", 0.0)
+            row = {"month": m, "label": label, "is_actual": False, "actual": None}
+            for s in ("low", "mid", "high"):
+                fv = round(base * factors[s], 2)
+                row[s] = fv
+                totals[s] += fv
+            months.append(row)
+
+    full_year = {s: round(totals[s], 2) for s in totals}
+    full_year["expected"] = full_year[{"conservative": "low", "moderate": "mid",
+                                        "aggressive": "high"}[FORECAST_EXPECTED_CASE]]
+
+    return {
+        "current_year": cur,
+        "prior_year": prior,
+        "expected_case": FORECAST_EXPECTED_CASE,
+        "last_actual_label": date(cur, last_actual_month, 1).strftime("%b"),
+        "ytd_actual": round(ytd_actual, 2),
+        "prior_ytd": round(prior_ytd, 2),
+        "prior_year_total": round(prior_total, 2),
+        "growth_pct": round((growth - 1.0) * 100, 1),
+        "full_year": full_year,
+        "months": months,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -357,6 +473,7 @@ def compute(access_token=None, force=False):
         },
         "weekly": weekly,
         "monthly": monthly,
+        "forecast": build_forecast(today),
     }
     _save_cache(payload)
     return payload

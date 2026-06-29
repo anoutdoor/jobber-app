@@ -1009,7 +1009,8 @@ def projections_dashboard():
         ), 500
     return render_template("projections.html", data=data,
                            weekly_json=_json.dumps(data["weekly"]),
-                           monthly_json=_json.dumps(data["monthly"]))
+                           monthly_json=_json.dumps(data["monthly"]),
+                           forecast_json=_json.dumps(data.get("forecast")))
 
 
 @app.route("/marketing/spend", methods=["GET", "POST"])

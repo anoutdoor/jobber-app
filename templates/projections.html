@@ -14,6 +14,7 @@
       --green:#00d68f; --green-dim:rgba(0,214,143,.12); --red:#ff4d6a; --red-dim:rgba(255,77,106,.12);
       --blue:#3b82f6; --blue-dim:rgba(59,130,246,.12); --purple:#8b5cf6;
       --amber:#f59e0b; --amber-dim:rgba(245,158,11,.14);
+      --gold:#e6b800; --gold-dim:rgba(230,184,0,.16);
     }
     *,body { font-family:'Inter',-apple-system,sans-serif; margin:0; padding:0; }
     body { background:var(--bg-deep); color:var(--text-primary); }
@@ -51,6 +52,7 @@
     .metric-label { font-size:11px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px; }
     .metric-value { font-size:32px; font-weight:900; margin:8px 0 4px; line-height:1; letter-spacing:-1px; }
     .metric-value.green { color:var(--green); } .metric-value.amber { color:var(--amber); }
+    .metric-value.gold { color:var(--gold); } .metric-value.red { color:var(--red); }
     .metric-sub { font-size:12px; color:var(--text-muted); }
     .metric-sub .pill { display:inline-block; background:var(--bg-hover); border-radius:5px; padding:1px 7px; margin-right:4px; font-weight:600; color:var(--text-secondary); }
 
@@ -121,6 +123,54 @@
     <a class="btn-refresh" href="/projections?refresh=1">🔄 Refresh from Jobber</a>
   </div>
 
+  {% if data.forecast %}
+  {% set f = data.forecast %}
+  <div class="section-title">Full-year {{ f.current_year }} forecast</div>
+  <div class="cards">
+    <div class="metric-card">
+      <div class="metric-label">Projected full-year revenue</div>
+      <div class="metric-value gold">${{ '{:,.0f}'.format(f.full_year.expected) }}</div>
+      <div class="metric-sub">{{ f.expected_case }} case · range ${{ '{:,.0f}'.format(f.full_year.low) }}–${{ '{:,.0f}'.format(f.full_year.high) }}</div>
+      <div class="accent-bar" style="background:var(--gold,#e6b800)"></div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Actual revenue YTD</div>
+      <div class="metric-value green">${{ '{:,.0f}'.format(f.ytd_actual) }}</div>
+      <div class="metric-sub">booked Jan–{{ f.last_actual_label }}, from QuickBooks</div>
+      <div class="accent-bar" style="background:var(--green)"></div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Growth vs {{ f.prior_year }}</div>
+      <div class="metric-value {{ 'green' if f.growth_pct >= 0 else 'red' }}">{{ '+' if f.growth_pct >= 0 else '' }}{{ '{:,.0f}'.format(f.growth_pct) }}%</div>
+      <div class="metric-sub">YTD vs same months last year</div>
+      <div class="accent-bar" style="background:var(--blue)"></div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Locked on calendar</div>
+      <div class="metric-value">${{ '{:,.0f}'.format(data.summary.committed_total) }}</div>
+      <div class="metric-sub">scheduled in Jobber, rest of year</div>
+      <div class="accent-bar" style="background:var(--green)"></div>
+    </div>
+  </div>
+
+  <div class="chart-card" style="margin-top:16px;">
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:18px;">
+      <div class="chart-title" style="margin:0;">Monthly revenue · actual + forecast band</div>
+      <div class="legend">
+        <span><span class="swatch rec"></span> Actual</span>
+        <span><span class="swatch" style="background:var(--gold,#e6b800)"></span> Forecast ({{ f.expected_case }})</span>
+        <span><span class="swatch up"></span> Low–high range</span>
+      </div>
+    </div>
+    <div style="position:relative; height:320px;"><canvas id="fchart"></canvas></div>
+  </div>
+
+  <div class="note">
+    <b>How this forecast works.</b> Actuals come straight from your QuickBooks P&amp;L through {{ f.last_actual_label }}. Each remaining month is projected from {{ f.prior_year }}'s same month scaled by your year-over-year growth. The three lines bracket how much of your <b>+{{ '{:,.0f}'.format(f.growth_pct) }}%</b> YTD pace holds: <b style="color:var(--green)">low</b> = growth stalls and you match last year, <b style="color:var(--gold,#e6b800)">expected</b> = {{ f.expected_case }} (growth eases to half the YTD pace), high = the full pace continues. "Locked on calendar" is what's actually scheduled in Jobber, the floor under the forecast.
+  </div>
+
+  <div class="section-title">Booked on the Jobber schedule</div>
+  {% endif %}
   <div class="cards">
     <div class="metric-card">
       <div class="metric-label">Committed (scheduled)</div>
@@ -148,7 +198,7 @@
     </div>
   </div>
 
-  <div class="section-title">Projection over time</div>
+  <div class="section-title">Scheduled work over time</div>
   <div class="chart-card">
     <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:18px;">
       <div class="toggle" id="toggle">
@@ -242,6 +292,51 @@
     });
   });
   render('weekly');
+
+  // Full-year forecast chart: actual + forecast bars, with a low–high band.
+  const FORECAST = {{ forecast_json|safe }};
+  if (FORECAST && document.getElementById('fchart')) {
+    const fm = FORECAST.months;
+    const labels = fm.map(m=>m.label);
+    const barVals = fm.map(m=>m.is_actual ? m.actual : m.mid);
+    const barColors = fm.map(m=>m.is_actual ? C('--green') : C('--gold'));
+    // Band lines only over forecast months (null on actuals so the band starts
+    // where the forecast does).
+    const lowLine = fm.map(m=>m.is_actual ? null : m.low);
+    const highLine = fm.map(m=>m.is_actual ? null : m.high);
+    new Chart(document.getElementById('fchart'), {
+      type:'bar',
+      data:{ labels, datasets:[
+        { type:'line', label:'High', data:highLine, borderColor:C('--gold'), borderWidth:1,
+          borderDash:[4,3], pointRadius:0, fill:false, spanGaps:false, tension:.3 },
+        { type:'line', label:'Low', data:lowLine, borderColor:C('--gold'), borderWidth:1,
+          borderDash:[4,3], pointRadius:0, fill:'-1', backgroundColor:C('--gold-dim'), spanGaps:false, tension:.3 },
+        { type:'bar', label:'Revenue', data:barVals, backgroundColor:barColors, borderRadius:3, maxBarThickness:46 },
+      ]},
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        interaction:{ mode:'index', intersect:false },
+        scales:{
+          x:{ grid:{display:false}, ticks:{ color:C('--text-muted'), font:{size:11} } },
+          y:{ grid:{color:'rgba(37,43,58,.6)'}, ticks:{ color:C('--text-muted'), font:{size:11}, callback:(v)=>'$'+(v/1000)+'k' } }
+        },
+        plugins:{
+          legend:{ display:false },
+          tooltip:{
+            backgroundColor:C('--bg-surface'), borderColor:C('--border'), borderWidth:1,
+            titleColor:C('--text-primary'), bodyColor:C('--text-secondary'), padding:12,
+            callbacks:{
+              title:(items)=>{ const m=fm[items[0].dataIndex]; return m.label+' '+FORECAST.current_year+(m.is_actual?'  (actual)':'  (forecast)'); },
+              label:(c)=>{ const m=fm[c.dataIndex];
+                if(c.dataset.label==='Revenue') return ' '+(m.is_actual?'Actual':'Expected')+': '+fmt(c.parsed.y);
+                if(m.is_actual) return null;
+                return ' '+c.dataset.label+': '+fmt(c.parsed.y); }
+            }
+          }
+        }
+      }
+    });
+  }
 </script>
 </body>
 </html>
