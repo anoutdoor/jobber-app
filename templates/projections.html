@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>A&N Outdoor Services — Revenue Projections</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg-deep:#0b0e14; --bg-surface:#12161f; --bg-card:#181d28; --bg-hover:#1e2433;
+      --border:#252b3a; --text-primary:#f0f2f5; --text-secondary:#8891a5; --text-muted:#555e71;
+      --green:#00d68f; --green-dim:rgba(0,214,143,.12); --red:#ff4d6a; --red-dim:rgba(255,77,106,.12);
+      --blue:#3b82f6; --blue-dim:rgba(59,130,246,.12); --purple:#8b5cf6;
+      --amber:#f59e0b; --amber-dim:rgba(245,158,11,.14);
+    }
+    *,body { font-family:'Inter',-apple-system,sans-serif; margin:0; padding:0; }
+    body { background:var(--bg-deep); color:var(--text-primary); }
+
+    .sidebar { width:220px; min-height:100vh; background:var(--bg-surface); border-right:1px solid var(--border);
+      position:fixed; top:0; left:0; display:flex; flex-direction:column; z-index:100; }
+    .sidebar-brand { padding:28px 20px 22px; }
+    .sidebar-logo { width:34px; height:34px; border-radius:10px; background:linear-gradient(135deg,var(--green),#00b37a);
+      display:flex; align-items:center; justify-content:center; font-weight:900; font-size:15px; color:#fff;
+      margin-bottom:14px; box-shadow:0 0 20px rgba(0,214,143,.25); }
+    .sidebar-brand .company { font-size:14px; font-weight:800; color:var(--text-primary); letter-spacing:.2px; }
+    .sidebar-brand .subtitle { font-size:10px; color:var(--text-muted); margin-top:3px; text-transform:uppercase; letter-spacing:1.5px; }
+    .sidebar-nav { padding:8px 10px; flex:1; }
+    .nav-label { font-size:9px; color:var(--text-muted); text-transform:uppercase; letter-spacing:1.5px; padding:0 10px; margin-bottom:8px; margin-top:8px; }
+    .nav-item a { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:10px;
+      color:var(--text-secondary); font-size:13px; font-weight:500; text-decoration:none; transition:all .15s; }
+    .nav-item a:hover { background:var(--bg-hover); color:var(--text-primary); }
+    .nav-item a.active { background:rgba(0,214,143,.08); color:var(--green); }
+    .nav-icon { font-size:15px; width:18px; text-align:center; }
+    .sidebar-footer { padding:14px 20px; border-top:1px solid var(--border); font-size:11px; color:var(--text-muted); }
+
+    .main-content { margin-left:220px; padding:28px 32px; min-height:100vh; }
+
+    .page-header { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:24px; flex-wrap:wrap; }
+    .page-header h1 { font-size:24px; font-weight:900; margin:0; }
+    .page-header .sub { font-size:13px; color:var(--text-muted); margin-top:4px; }
+    .btn-refresh { background:var(--bg-card); border:1px solid var(--border); color:var(--text-secondary);
+      font-size:12px; font-weight:600; padding:8px 16px; border-radius:8px; text-decoration:none; transition:all .15s; white-space:nowrap; }
+    .btn-refresh:hover { background:var(--bg-hover); color:var(--text-primary); }
+
+    .cards { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; }
+    @media (max-width:1100px){ .cards { grid-template-columns:repeat(2,1fr); } }
+    .metric-card { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:20px 22px; position:relative; overflow:hidden; }
+    .metric-card .accent-bar { position:absolute; bottom:0; left:22px; right:22px; height:3px; border-radius:3px 3px 0 0; }
+    .metric-label { font-size:11px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px; }
+    .metric-value { font-size:32px; font-weight:900; margin:8px 0 4px; line-height:1; letter-spacing:-1px; }
+    .metric-value.green { color:var(--green); } .metric-value.amber { color:var(--amber); }
+    .metric-sub { font-size:12px; color:var(--text-muted); }
+    .metric-sub .pill { display:inline-block; background:var(--bg-hover); border-radius:5px; padding:1px 7px; margin-right:4px; font-weight:600; color:var(--text-secondary); }
+
+    .section-title { font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:1.5px;
+      margin-bottom:14px; margin-top:34px; display:flex; align-items:center; gap:12px; }
+    .section-title::after { content:''; flex:1; height:1px; background:var(--border); }
+
+    .chart-card { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:22px; }
+    .toggle { display:inline-flex; background:var(--bg-deep); border:1px solid var(--border); border-radius:9px; padding:3px; gap:2px; }
+    .toggle button { background:transparent; border:0; color:var(--text-secondary); font-size:12px; font-weight:700;
+      padding:6px 16px; border-radius:7px; cursor:pointer; transition:all .15s; }
+    .toggle button.active { background:var(--green); color:#06231a; }
+    .legend { display:flex; gap:18px; flex-wrap:wrap; margin-top:14px; font-size:12px; color:var(--text-secondary); }
+    .legend span { display:inline-flex; align-items:center; gap:7px; }
+    .swatch { width:12px; height:12px; border-radius:3px; }
+    .swatch.rec { background:var(--green); } .swatch.one { background:var(--blue); }
+    .swatch.up { background:repeating-linear-gradient(45deg,var(--amber),var(--amber) 3px,transparent 3px,transparent 6px); border:1px solid var(--amber); }
+
+    table.proj { width:100%; border-collapse:collapse; margin-top:6px; font-size:13px; }
+    table.proj th { text-align:right; font-size:10px; text-transform:uppercase; letter-spacing:.8px; color:var(--text-muted);
+      font-weight:700; padding:10px 14px; border-bottom:1px solid var(--border); }
+    table.proj th:first-child { text-align:left; }
+    table.proj td { text-align:right; padding:11px 14px; border-bottom:1px solid rgba(37,43,58,.5); color:var(--text-secondary); }
+    table.proj td:first-child { text-align:left; color:var(--text-primary); font-weight:600; }
+    table.proj td.committed { color:var(--green); font-weight:700; }
+    table.proj td.upside { color:var(--amber); }
+    table.proj td.projected { color:var(--text-primary); font-weight:800; }
+    table.proj tr:hover td { background:var(--bg-hover); }
+    .muted { color:var(--text-muted); }
+
+    .note { background:var(--amber-dim); border:1px solid rgba(245,158,11,.3); border-radius:10px; padding:12px 16px;
+      font-size:12px; color:var(--text-secondary); margin-top:16px; line-height:1.5; }
+    .note b { color:var(--amber); }
+  </style>
+</head>
+<body>
+
+<div class="sidebar">
+  <div class="sidebar-brand">
+    <div class="sidebar-logo">A</div>
+    <div class="company">A&N Outdoor</div>
+    <div class="subtitle">Projections</div>
+  </div>
+  <nav class="sidebar-nav">
+    <div class="nav-label">Apps</div>
+    <ul class="nav flex-column gap-1">
+      <li class="nav-item"><a href="/dashboard"><span class="nav-icon">📊</span> Job Costing</a></li>
+      <li class="nav-item"><a href="https://cash-position-tracker-production.up.railway.app/" target="_blank" rel="noopener"><span class="nav-icon">💵</span> Cash Position <span style="font-size:9px;opacity:.55;margin-left:4px">↗</span></a></li>
+      <li class="nav-item"><a href="/mow-dashboard"><span class="nav-icon">🌱</span> Mowing</a></li>
+      <li class="nav-item"><a href="/marketing"><span class="nav-icon">📣</span> Marketing</a></li>
+      <li class="nav-item"><a href="/projections" class="active"><span class="nav-icon">📈</span> Projections</a></li>
+    </ul>
+    <div class="nav-label" style="margin-top:18px">Tools</div>
+    <ul class="nav flex-column gap-1">
+      <li class="nav-item"><a href="/projections?refresh=1"><span class="nav-icon">🔄</span> Refresh data</a></li>
+      <li class="nav-item"><a href="/"><span class="nav-icon">🏠</span> Home</a></li>
+    </ul>
+  </nav>
+  <div class="sidebar-footer">Updated {{ data.last_updated }}</div>
+</div>
+
+<div class="main-content">
+  <div class="page-header">
+    <div>
+      <h1>Revenue Projections</h1>
+      <div class="sub">Scheduled revenue through Dec 31{% if data.weeks_remaining %} · {{ data.weeks_remaining }} weeks remaining{% endif %} · updated {{ data.last_updated }}</div>
+    </div>
+    <a class="btn-refresh" href="/projections?refresh=1">🔄 Refresh from Jobber</a>
+  </div>
+
+  <div class="cards">
+    <div class="metric-card">
+      <div class="metric-label">Committed (scheduled)</div>
+      <div class="metric-value green">${{ '{:,.0f}'.format(data.summary.committed_total) }}</div>
+      <div class="metric-sub"><span class="pill">Mow ${{ '{:,.0f}'.format(data.summary.committed_recurring) }}</span><span class="pill">Jobs ${{ '{:,.0f}'.format(data.summary.committed_oneoff) }}</span></div>
+      <div class="accent-bar" style="background:var(--green)"></div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Upside (modeled)</div>
+      <div class="metric-value amber">${{ '{:,.0f}'.format(data.summary.upside_total) }}</div>
+      <div class="metric-sub">small extras not booked yet</div>
+      <div class="accent-bar" style="background:var(--amber)"></div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Projected total</div>
+      <div class="metric-value">${{ '{:,.0f}'.format(data.summary.projected_total) }}</div>
+      <div class="metric-sub">committed + upside, rest of year</div>
+      <div class="accent-bar" style="background:linear-gradient(90deg,var(--green),var(--amber))"></div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Avg committed / week</div>
+      <div class="metric-value">${{ '{:,.0f}'.format(data.summary.avg_committed_per_week) }}</div>
+      <div class="metric-sub">across remaining weeks</div>
+      <div class="accent-bar" style="background:var(--blue)"></div>
+    </div>
+  </div>
+
+  <div class="section-title">Projection over time</div>
+  <div class="chart-card">
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:18px;">
+      <div class="toggle" id="toggle">
+        <button data-mode="weekly" class="active">Weekly</button>
+        <button data-mode="monthly">Monthly</button>
+      </div>
+      <div class="legend">
+        <span><span class="swatch rec"></span> Recurring (mowing)</span>
+        <span><span class="swatch one"></span> Scheduled jobs</span>
+        <span><span class="swatch up"></span> Upside (modeled)</span>
+      </div>
+    </div>
+    <div style="position:relative; height:340px;"><canvas id="chart"></canvas></div>
+  </div>
+
+  <div class="section-title">Breakdown</div>
+  <div class="chart-card" style="padding:8px 14px 14px;">
+    <table class="proj">
+      <thead>
+        <tr><th id="th-period">Week</th><th>Recurring</th><th>Scheduled jobs</th><th>Committed</th><th>Upside</th><th>Projected</th></tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+
+  <div class="note">
+    <b>How to read this.</b> <b style="color:var(--green)">Committed</b> is real: every mow and job already on the Jobber calendar through Dec 31, valued at its actual price. <b style="color:var(--amber)">Upside</b> is a modeled estimate of the small one-off work (cleanups, mulch, small repairs under ${{ '{:,.0f}'.format(2000) }}) you reliably book but haven't scheduled yet, based on your recent booking run-rate and scaled down through the off-season. Big installs aren't extrapolated, they only count once they're scheduled.
+  </div>
+</div>
+
+<script>
+  const WEEKLY = {{ weekly_json|safe }};
+  const MONTHLY = {{ monthly_json|safe }};
+  const css = getComputedStyle(document.documentElement);
+  const C = (n)=>css.getPropertyValue(n).trim();
+  const fmt = (v)=>'$'+Math.round(v).toLocaleString();
+
+  let chart;
+  function render(mode){
+    const rows = mode==='weekly' ? WEEKLY : MONTHLY;
+    const labels = rows.map(r=>r.label);
+    const ctx = document.getElementById('chart');
+    const data = {
+      labels,
+      datasets:[
+        { label:'Recurring', data:rows.map(r=>r.recurring), backgroundColor:C('--green'), stack:'s', borderRadius:2 },
+        { label:'Scheduled jobs', data:rows.map(r=>r.oneoff), backgroundColor:C('--blue'), stack:'s', borderRadius:2 },
+        { label:'Upside (modeled)', data:rows.map(r=>r.upside), backgroundColor:C('--amber-dim'), borderColor:C('--amber'), borderWidth:{top:1.5,left:0,right:0,bottom:0}, stack:'s', borderRadius:2 },
+      ]
+    };
+    const opts = {
+      responsive:true, maintainAspectRatio:false,
+      interaction:{ mode:'index', intersect:false },
+      scales:{
+        x:{ stacked:true, grid:{display:false}, ticks:{ color:C('--text-muted'), font:{size:11}, maxRotation:0, autoSkip:true, maxTicksLimit: mode==='weekly'?14:12 } },
+        y:{ stacked:true, grid:{color:'rgba(37,43,58,.6)'}, ticks:{ color:C('--text-muted'), font:{size:11}, callback:(v)=>'$'+(v/1000)+'k' } }
+      },
+      plugins:{
+        legend:{ display:false },
+        tooltip:{
+          backgroundColor:C('--bg-surface'), borderColor:C('--border'), borderWidth:1,
+          titleColor:C('--text-primary'), bodyColor:C('--text-secondary'), padding:12,
+          callbacks:{
+            label:(c)=>` ${c.dataset.label}: ${fmt(c.parsed.y)}`,
+            footer:(items)=>{ const r=rows[items[0].dataIndex]; return `Committed ${fmt(r.committed)}  ·  Projected ${fmt(r.projected)}`; }
+          }
+        }
+      }
+    };
+    if(chart) chart.destroy();
+    chart = new Chart(ctx, { type:'bar', data, options:opts });
+
+    // table
+    const tb = document.getElementById('tbody');
+    document.getElementById('th-period').textContent = mode==='weekly'?'Week of':'Month';
+    tb.innerHTML = rows.map(r=>`<tr>
+      <td>${r.label}</td>
+      <td>${r.recurring?fmt(r.recurring):'<span class=muted>—</span>'}</td>
+      <td>${r.oneoff?fmt(r.oneoff):'<span class=muted>—</span>'}</td>
+      <td class="committed">${fmt(r.committed)}</td>
+      <td class="upside">${r.upside?fmt(r.upside):'<span class=muted>—</span>'}</td>
+      <td class="projected">${fmt(r.projected)}</td>
+    </tr>`).join('');
+  }
+
+  document.querySelectorAll('#toggle button').forEach(b=>{
+    b.addEventListener('click',()=>{
+      document.querySelectorAll('#toggle button').forEach(x=>x.classList.remove('active'));
+      b.classList.add('active');
+      render(b.dataset.mode);
+    });
+  });
+  render('weekly');
+</script>
+</body>
+</html>

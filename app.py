@@ -18,6 +18,7 @@ from financial.cash_email import run_cash_digest
 from financial.pnl_reminder import send_pnl_reminder
 from mow_time_export import main as run_mow_export
 import marketing
+import revenue_projections
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -982,6 +983,33 @@ def marketing_dashboard():
         ), 500
     return render_template("marketing_dashboard.html", data=data,
                            trend_json=_json.dumps(data["trend"]))
+
+
+@app.route("/projections")
+def projections_dashboard():
+    """Revenue projections. Combines committed revenue (every scheduled Jobber
+    visit through year-end, at real prices) with a modeled upside band for the
+    small one-off work you reliably book but haven't scheduled yet. Gated behind
+    the Jobber session since it shows revenue. ?refresh=1 forces a live re-pull
+    (otherwise it serves the cached projection for an instant load)."""
+    if "access_token" not in session:
+        return redirect(url_for("login"))
+    import json as _json
+    force = request.args.get("refresh") == "1"
+    try:
+        data = revenue_projections.get_payload(force=force)
+    except Exception as e:
+        logger.exception("projections: compute failed")
+        return (
+            "<h2>Revenue projections</h2>"
+            "<p>Couldn't build the projection right now.</p>"
+            f"<pre style='color:#a5281b'>{e}</pre>"
+            "<p>If the Jobber token just expired, reconnect at <a href='/login'>/login</a> "
+            "and <a href='/projections?refresh=1'>try again</a>.</p>"
+        ), 500
+    return render_template("projections.html", data=data,
+                           weekly_json=_json.dumps(data["weekly"]),
+                           monthly_json=_json.dumps(data["monthly"]))
 
 
 @app.route("/marketing/spend", methods=["GET", "POST"])

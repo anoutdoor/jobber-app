@@ -13,3 +13,4 @@ last_sync.txt
 qbo_token_store.json
 last_financial_snapshot.json
 mow_dashboard_cache.json
+projections_cache.json
