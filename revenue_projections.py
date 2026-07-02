@@ -483,6 +483,24 @@ def get_payload(force=False, access_token=None):
     return compute(access_token=access_token, force=force)
 
 
+def refresh():
+    """Force a fresh pull + cache rebuild. Called nightly by the scheduler so the
+    page loads instantly and never makes anyone wait on the ~2-minute Jobber pull.
+    Tokens come from the usual store (Sheets/env in production)."""
+    try:
+        payload = compute(force=True)
+        fc = (payload.get("forecast") or {}).get("full_year", {})
+        logger.info(
+            "projections: scheduled refresh ok (committed $%.0f, forecast expected $%s)",
+            payload["summary"]["committed_total"],
+            fc.get("expected", "n/a"),
+        )
+        return payload
+    except Exception:
+        logger.exception("projections: scheduled refresh failed")
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Cache
 # ---------------------------------------------------------------------------

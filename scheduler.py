@@ -11,7 +11,8 @@ CT = pytz.timezone("America/Chicago")
 
 
 def start_scheduler(sync_fn, reconcile_fn, digest_fn=None, mow_export_fn=None,
-                    pnl_reminder_fn=None, marketing_refresh_fn=None):
+                    pnl_reminder_fn=None, marketing_refresh_fn=None,
+                    projections_refresh_fn=None):
     global _scheduler
     if _scheduler and _scheduler.running:
         return
@@ -75,6 +76,16 @@ def start_scheduler(sync_fn, reconcile_fn, digest_fn=None, mow_export_fn=None,
             replace_existing=True,
         )
         logger.info("Scheduled marketing dashboard refresh (5:30am CT).")
+
+    if projections_refresh_fn:
+        _scheduler.add_job(
+            projections_refresh_fn,
+            trigger=CronTrigger(hour=5, minute=45, timezone=CT),
+            id="projections_refresh",
+            name="Revenue projections cache refresh (5:45am CT)",
+            replace_existing=True,
+        )
+        logger.info("Scheduled revenue projections refresh (5:45am CT).")
 
     _scheduler.start()
 

@@ -1202,7 +1202,8 @@ if __name__ == "__main__":
         start_scheduler(run_sync, reconcile_daily_overhead, digest_fn=run_cash_digest,
                         mow_export_fn=run_mow_export,
                         pnl_reminder_fn=send_pnl_reminder,
-                        marketing_refresh_fn=marketing.refresh)
+                        marketing_refresh_fn=marketing.refresh,
+                        projections_refresh_fn=revenue_projections.refresh)
 
     import atexit
     atexit.register(stop_scheduler)
