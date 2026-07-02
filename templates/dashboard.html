@@ -355,15 +355,7 @@
 
   <!-- Hours KPI Cards -->
   <div class="row g-3 mt-1">
-    <div class="col-6 col-xl-3">
-      <div class="metric-card">
-        <div class="metric-label">Estimated Hours</div>
-        <div class="metric-value">{{ data.total_estimated_hours }}</div>
-        <div class="metric-sub">{{ data.jobs_with_estimates }} jobs with estimates</div>
-        <div class="accent-bar" style="background:var(--amber)"></div>
-      </div>
-    </div>
-    <div class="col-6 col-xl-3">
+    <div class="col-6 col-xl-6">
       <div class="metric-card">
         <div class="metric-label">Actual Hours</div>
         <div class="metric-value">{{ data.total_labor_hours }}</div>
@@ -371,21 +363,7 @@
         <div class="accent-bar" style="background:var(--blue)"></div>
       </div>
     </div>
-    <div class="col-6 col-xl-3">
-      <div class="metric-card">
-        <div class="metric-label">Efficiency Rate</div>
-        <div class="metric-value {% if data.total_estimated_hours > 0 and data.total_labor_hours > 0 %}{% if data.total_estimated_hours / data.total_labor_hours >= 1 %}green{% else %}red{% endif %}{% endif %}">
-          {% if data.total_estimated_hours > 0 and data.total_labor_hours > 0 %}
-            {{ "{:.0f}".format(data.total_estimated_hours / data.total_labor_hours * 100) }}%
-          {% else %}
-            —
-          {% endif %}
-        </div>
-        <div class="metric-sub">Est. / Actual (100%+ = under budget)</div>
-        <div class="accent-bar" style="background:{% if data.total_estimated_hours > 0 and data.total_labor_hours > 0 %}{% if data.total_estimated_hours / data.total_labor_hours >= 1 %}var(--green){% else %}var(--red){% endif %}{% else %}var(--text-muted){% endif %}"></div>
-      </div>
-    </div>
-    <div class="col-6 col-xl-3">
+    <div class="col-6 col-xl-6">
       <div class="metric-card">
         <div class="metric-label">Revenue / Hour</div>
         <div class="metric-value">
@@ -561,7 +539,7 @@
         <thead><tr>
           <th>Date</th><th>Client</th><th>Crew</th><th>Revenue</th><th>Labor</th><th>Materials</th>
           <th>Gross Profit</th><th>Gross Margin</th>
-          <th>Est. Hrs</th><th></th>
+          <th></th>
         </tr></thead>
         <tbody>
           {% for job in data.recent_jobs %}
@@ -576,11 +554,10 @@
             <td>${{ "{:,.0f}".format(job.materials_cost) }}</td>
             <td><span class="{% if job.gross_profit >= 0 %}val-positive{% else %}val-negative{% endif %}">${{ "{:,.0f}".format(job.gross_profit) }}</span></td>
             <td>{% if job.gross_margin_pct is not none %}<span class="pill {% if job.gross_margin_pct >= 45 %}pill-green{% else %}pill-red{% endif %}">{{ job.gross_margin_pct }}%</span>{% else %}<span class="val-muted">—</span>{% endif %}</td>
-            <td style="text-align:center;color:var(--text-muted)">{{ job.estimated_hours or '—' }}</td>
             <td>{% if job.gross_margin_flag %}<span style="font-size:10px;color:var(--red)">⚠</span>{% endif %}</td>
           </tr>
           {% else %}
-          <tr><td colspan="10" style="text-align:center;padding:32px;color:var(--text-muted)">No jobs found</td></tr>
+          <tr><td colspan="9" style="text-align:center;padding:32px;color:var(--text-muted)">No jobs found</td></tr>
           {% endfor %}
         </tbody>
       </table>

@@ -118,7 +118,6 @@ def parse_jobs(raw):
             "net_margin_flag":   str(job.get("Net Margin Flag", "")),
             "rev_per_visit_day": safe_float(job.get("Revenue / Visit Day ($)", 0)),
             "labor_hours":      safe_float(job.get("Labor Hours", 0)),
-            "estimated_hours":  str(job.get("Estimated Hours", "")),
         })
 
     parsed.sort(key=lambda x: x["close_date"], reverse=True)
@@ -156,17 +155,9 @@ def compute_dashboard():
     month_net_profit   = round(month_gross_profit - MONTHLY_OVERHEAD, 2)
     avg_net_margin     = round(month_net_profit / month_revenue * 100, 1) if month_revenue else None
 
-    # ── Hours KPIs ───────────────────────────────────────────────────────────
-    total_estimated_hours = 0.0
-    total_labor_hours = 0.0
-    jobs_with_estimates = 0
-    for j in month_jobs:
-        eh = safe_float(j.get("estimated_hours", 0))
-        lh = safe_float(j.get("labor_hours", 0))
-        total_labor_hours += lh
-        if eh > 0:
-            total_estimated_hours += eh
-            jobs_with_estimates += 1
+    # ── Hours KPI ────────────────────────────────────────────────────────────
+    # Actual labor hours from timesheets; feeds the Actual Hours + Revenue/Hour cards.
+    total_labor_hours = round(sum(j["labor_hours"] for j in month_jobs), 1)
 
     # ── Crew leaderboard ─────────────────────────────────────────────────────
     # Brock is a per-job subcontractor treated as a crew. His pay lives in
@@ -269,9 +260,7 @@ def compute_dashboard():
         "day_of_month":         day_of_month,
         "weekly_jobs_chart":    weekly_jobs_chart,
         "weeks":                weeks,
-        "total_estimated_hours": round(total_estimated_hours, 1),
-        "total_labor_hours":    round(total_labor_hours, 1),
-        "jobs_with_estimates":  jobs_with_estimates,
+        "total_labor_hours":    total_labor_hours,
         "recent_jobs":          jobs[:30],
         "last_updated":         today.strftime("%B %d, %Y"),
     }
