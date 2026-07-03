@@ -106,6 +106,11 @@
       <div class="foot">{{ t.won }} won &middot; {{ t.open_leads }} open leads</div>
     </div>
     <div class="card">
+      <div class="label">Data completeness</div>
+      <div class="value {{ 'pos' if data.data_quality.pct_attributed >= 80 else ('gold' if data.data_quality.pct_attributed >= 50 else 'neg') }}">{{ data.data_quality.pct_attributed }}%</div>
+      <div class="foot">{{ data.data_quality.with_source }} of {{ data.data_quality.total_clients }} have a source</div>
+    </div>
+    <div class="card">
       <div class="label">Marketing spend</div>
       <div class="value">{{ money(t.spend) }}</div>
       <div class="foot">{{ data.range.label|lower }}</div>
