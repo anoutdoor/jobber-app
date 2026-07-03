@@ -222,6 +222,20 @@ def cash_digest_now():
     return jsonify({k: v for k, v in result.items() if k != "html"})
 
 
+@app.route("/homeowners-now")
+def homeowners_now():
+    """Fire (or preview) the weekly new-homeowner lead digest. ?dry=1
+    renders the HTML without sending or advancing the high-water mark."""
+    if "access_token" not in session:
+        return redirect(url_for("login"))
+    from new_homeowners import run_weekly
+    dry = request.args.get("dry") == "1"
+    result = run_weekly(dry_run=dry)
+    if dry and "html" in result:
+        return result["html"]
+    return jsonify({k: v for k, v in result.items() if k != "html"})
+
+
 @app.route("/pnl-reminder-now")
 def pnl_reminder_now():
     """Manually fire (or preview) the monthly P&L update reminder. Add ?dry=1 to
@@ -1218,11 +1232,13 @@ if __name__ == "__main__":
 
     # Avoid double-start from Flask's reloader spawning a second process
     if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not app.debug:
+        from new_homeowners import run_weekly as run_homeowners
         start_scheduler(run_sync, reconcile_daily_overhead, digest_fn=run_cash_digest,
                         mow_export_fn=run_mow_export,
                         pnl_reminder_fn=send_pnl_reminder,
                         marketing_refresh_fn=marketing.refresh,
-                        projections_refresh_fn=revenue_projections.refresh)
+                        projections_refresh_fn=revenue_projections.refresh,
+                        homeowners_fn=run_homeowners)
 
     import atexit
     atexit.register(stop_scheduler)
