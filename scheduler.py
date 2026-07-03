@@ -12,7 +12,8 @@ CT = pytz.timezone("America/Chicago")
 
 def start_scheduler(sync_fn, reconcile_fn, digest_fn=None, mow_export_fn=None,
                     pnl_reminder_fn=None, marketing_refresh_fn=None,
-                    projections_refresh_fn=None, homeowners_fn=None):
+                    projections_refresh_fn=None, homeowners_fn=None,
+                    bid_scan_fn=None):
     global _scheduler
     if _scheduler and _scheduler.running:
         return
@@ -96,6 +97,16 @@ def start_scheduler(sync_fn, reconcile_fn, digest_fn=None, mow_export_fn=None,
             replace_existing=True,
         )
         logger.info("Scheduled weekly new-homeowner digest (Mon 7:30am CT).")
+
+    if bid_scan_fn:
+        _scheduler.add_job(
+            bid_scan_fn,
+            trigger=CronTrigger(hour=6, minute=15, timezone=CT),
+            id="daily_bid_scan",
+            name="Daily municipal bid-opportunity scan (6:15am CT)",
+            replace_existing=True,
+        )
+        logger.info("Scheduled daily bid-opportunity scan (6:15am CT).")
 
     _scheduler.start()
 
