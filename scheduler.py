@@ -12,7 +12,7 @@ CT = pytz.timezone("America/Chicago")
 
 def start_scheduler(sync_fn, reconcile_fn, digest_fn=None, mow_export_fn=None,
                     pnl_reminder_fn=None, marketing_refresh_fn=None,
-                    projections_refresh_fn=None):
+                    projections_refresh_fn=None, homeowners_fn=None):
     global _scheduler
     if _scheduler and _scheduler.running:
         return
@@ -86,6 +86,16 @@ def start_scheduler(sync_fn, reconcile_fn, digest_fn=None, mow_export_fn=None,
             replace_existing=True,
         )
         logger.info("Scheduled revenue projections refresh (5:45am CT).")
+
+    if homeowners_fn:
+        _scheduler.add_job(
+            homeowners_fn,
+            trigger=CronTrigger(day_of_week="mon", hour=7, minute=30, timezone=CT),
+            id="weekly_new_homeowners",
+            name="Weekly new-homeowner lead digest (Mon 7:30am CT)",
+            replace_existing=True,
+        )
+        logger.info("Scheduled weekly new-homeowner digest (Mon 7:30am CT).")
 
     _scheduler.start()
 
