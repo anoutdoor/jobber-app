@@ -207,6 +207,102 @@ def fetch_most_recent_txn_date():
     return purchases[0].get("TxnDate")
 
 
+# ---------------------------------------------------------------------------
+# Profit & Loss report (monthly revenue) — powers the revenue-projection forecast
+# ---------------------------------------------------------------------------
+
+def _pnl_basis():
+    """Accounting basis for the P&L report. Accrual matches revenue to when the
+    work was done/invoiced (how the Jobber committed layer counts it), so it's
+    the default for a forward revenue forecast. Override with QBO_PNL_BASIS."""
+    basis = (os.getenv("QBO_PNL_BASIS") or "Accrual").strip().capitalize()
+    return "Cash" if basis == "Cash" else "Accrual"
+
+
+def fetch_pnl_report(start_date, end_date, accounting_method=None):
+    """Raw QBO ProfitAndLoss report summarized by month over [start_date, end_date]
+    (both 'YYYY-MM-DD'). Returns the parsed report dict, or None on auth/API failure."""
+    params = {
+        "start_date": start_date,
+        "end_date": end_date,
+        "summarize_column_by": "Month",
+        "accounting_method": accounting_method or _pnl_basis(),
+        "minorversion": "70",
+    }
+    return _api_get(f"/reports/ProfitAndLoss?{urlencode(params)}")
+
+
+def _num(value):
+    """QBO money cell -> float. Blank/None/garbage -> 0.0."""
+    if value is None:
+        return 0.0
+    s = str(value).replace(",", "").replace("$", "").strip()
+    if not s:
+        return 0.0
+    try:
+        return float(s)
+    except ValueError:
+        return 0.0
+
+
+def _month_key_from_column(col):
+    """Map a report column to 'YYYY-MM', or None for non-month columns (the
+    leading account column and the trailing 'Total' column have no StartDate)."""
+    for md in (col.get("MetaData") or []):
+        if md.get("Name") == "StartDate" and md.get("Value"):
+            return md["Value"][:7]
+    title = (col.get("ColTitle") or "").strip()
+    if title:
+        try:
+            from datetime import datetime as _dt
+            return _dt.strptime(title, "%b %Y").strftime("%Y-%m")
+        except ValueError:
+            return None
+    return None
+
+
+def _income_summary_row(report):
+    """The 'Total Income' summary ColData for the report's Income section, index-
+    aligned with the columns. None if no Income section is present."""
+    rows = ((report.get("Rows") or {}).get("Row")) or []
+    for r in rows:
+        header0 = (((r.get("Header") or {}).get("ColData") or [{}])[0]
+                   .get("value") or "").strip().lower()
+        if r.get("group") == "Income" or header0 == "income":
+            summ = (r.get("Summary") or {}).get("ColData")
+            if summ:
+                return summ
+    return None
+
+
+def fetch_monthly_revenue(start_date, end_date, accounting_method=None):
+    """Live monthly Total Income from QuickBooks as {'YYYY-MM': revenue}.
+
+    Pulls the ProfitAndLoss report summarized by month and reads the Income
+    section's 'Total Income' line per month column. Returns None on auth/API
+    failure or if the report has no recognizable Income section, so callers can
+    fall back to another revenue source.
+    """
+    report = fetch_pnl_report(start_date, end_date, accounting_method)
+    if not report:
+        return None
+    cols = ((report.get("Columns") or {}).get("Column")) or []
+    idx_to_month = {}
+    for i, col in enumerate(cols):
+        mk = _month_key_from_column(col)
+        if mk:
+            idx_to_month[i] = mk
+    summary = _income_summary_row(report)
+    if summary is None:
+        logger.error("QBO P&L: no Income section found in report")
+        return None
+    out = {}
+    for i, mk in idx_to_month.items():
+        if i < len(summary):
+            out[mk] = round(_num(summary[i].get("value")), 2)
+    return out
+
+
 def fetch_account_balances():
     """Return list of dicts:
         {id, name, type, subtype, balance, currency}

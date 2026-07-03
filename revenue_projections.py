@@ -49,8 +49,10 @@ SMALL_ONEOFF_MAX = 2000.0
 
 # Full-year forecast (top-down, from QuickBooks P&L history). The committed band
 # above is bottom-up from the Jobber schedule; this is the statistical layer the
-# whole-year revenue number comes from. Source is the same monthly P&L the
-# financials dashboard reads.
+# whole-year revenue number comes from. Monthly actuals come live from the
+# QuickBooks ProfitAndLoss report (financial.qbo.fetch_monthly_revenue); if QBO
+# isn't authorized the forecast falls back to this static snapshot, the same
+# monthly P&L the financials dashboard reads.
 PNL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                         "financial_dashboard", "pnl.json")
 
@@ -346,8 +348,50 @@ def _load_pnl_revenue():
     return rev, incomplete
 
 
+def _load_qbo_revenue(today):
+    """Live monthly revenue straight from QuickBooks, as (rev_dict, incomplete_set).
+    Returns None if QBO isn't authorized or the pull fails, so build_forecast can
+    fall back to the static P&L snapshot. Pulls prior year (for the growth
+    comparison) through today; the current calendar month is still accruing, so
+    it's flagged incomplete and gets projected rather than treated as a full actual.
+    """
+    try:
+        from financial import qbo as _qbo
+    except Exception:
+        return None
+    try:
+        if not _qbo.load_tokens().get("access_token"):
+            return None
+        start = f"{today.year - 1}-01-01"
+        rev = _qbo.fetch_monthly_revenue(start, today.isoformat())
+        if not rev:
+            return None
+        cur_key = f"{today.year}-{today.month:02d}"
+        incomplete = {cur_key} if cur_key in rev else set()
+        return rev, incomplete
+    except Exception:
+        logger.exception("projections: QBO revenue pull failed; using P&L snapshot")
+        return None
+
+
+def _load_revenue_history(today):
+    """Monthly actuals for the forecast: (rev_dict, incomplete_set, source).
+    Live QuickBooks first, static P&L export as automatic fallback."""
+    qbo_res = _load_qbo_revenue(today)
+    if qbo_res:
+        rev, incomplete = qbo_res
+        return rev, incomplete, "quickbooks_live"
+    rev, incomplete = _load_pnl_revenue()
+    return rev, incomplete, "pnl_snapshot"
+
+
 def build_forecast(today):
     """Top-down full-year revenue forecast from QuickBooks monthly history.
+
+    Monthly actuals come live from QuickBooks (ProfitAndLoss report), falling
+    back to the static P&L snapshot when QBO isn't authorized. Both the current-
+    year YTD and the prior-year comparable come from the same source on the same
+    accounting basis, so the growth ratio stays self-consistent.
 
     Method: anchor on this year's actual revenue to date, then project each
     remaining month from the prior full year's same-month revenue scaled by a
@@ -359,7 +403,7 @@ def build_forecast(today):
 
     Returns None if there isn't enough history (need a prior-year comparable).
     """
-    rev, incomplete = _load_pnl_revenue()
+    rev, incomplete, source = _load_revenue_history(today)
     if not rev:
         return None
 
@@ -414,6 +458,9 @@ def build_forecast(today):
         "current_year": cur,
         "prior_year": prior,
         "expected_case": FORECAST_EXPECTED_CASE,
+        "revenue_source": source,
+        "revenue_source_label": ("Live from QuickBooks" if source == "quickbooks_live"
+                                 else "Static P&L export"),
         "last_actual_label": date(cur, last_actual_month, 1).strftime("%b"),
         "ytd_actual": round(ytd_actual, 2),
         "prior_ytd": round(prior_ytd, 2),

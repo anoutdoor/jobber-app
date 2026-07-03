@@ -1013,6 +1013,25 @@ def projections_dashboard():
                            forecast_json=_json.dumps(data.get("forecast")))
 
 
+@app.route("/projections/revenue-source")
+def projections_revenue_source():
+    """Debug: show which monthly-revenue source the forecast is using and the
+    exact per-month actuals. Lets us confirm the live QuickBooks pull matches the
+    books. Gated behind the Jobber session since it exposes revenue."""
+    if "access_token" not in session:
+        return redirect(url_for("login"))
+    from datetime import datetime as _dt
+    from jobber_sync import CENTRAL_TZ as _tz
+    today = _dt.now(_tz).date()
+    rev, incomplete, source = revenue_projections._load_revenue_history(today)
+    return jsonify({
+        "source": source,
+        "today": today.isoformat(),
+        "incomplete_months": sorted(incomplete),
+        "months": {k: rev[k] for k in sorted(rev)},
+    })
+
+
 @app.route("/marketing/spend", methods=["GET", "POST"])
 def marketing_spend():
     """Log marketing spend (door hangers, the monthly SEO fee, FB boosts). Stored

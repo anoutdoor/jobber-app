@@ -136,7 +136,7 @@
     <div class="metric-card">
       <div class="metric-label">Actual revenue YTD</div>
       <div class="metric-value green">${{ '{:,.0f}'.format(f.ytd_actual) }}</div>
-      <div class="metric-sub">booked Jan–{{ f.last_actual_label }}, from QuickBooks</div>
+      <div class="metric-sub">booked Jan–{{ f.last_actual_label }} · {{ f.revenue_source_label }}</div>
       <div class="accent-bar" style="background:var(--green)"></div>
     </div>
     <div class="metric-card">
