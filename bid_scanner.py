@@ -36,7 +36,7 @@ UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
 HEADERS = {"User-Agent": UA, "Accept": "text/html,application/xhtml+xml",
            "Accept-Language": "en-US,en;q=0.9"}
 STATE_TAB = "_bidstate"
-DEFAULT_TO = "an.lawnservices1@gmail.com"
+DEFAULT_TO = "alex@anoutdoorservices.com, niko@anoutdoorservices.com"
 SEEN_CAP = 1500  # bound the stored id list
 
 # Green-industry relevance filter. Stems (\w* suffix) for word families,
