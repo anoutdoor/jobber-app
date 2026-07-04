@@ -32,7 +32,7 @@ SERVICE_ZIPS = {
 }
 SHOP = (42.0664, -87.9373)  # Mount Prospect base
 STATE_TAB = "_leadstate"
-DEFAULT_TO = "an.lawnservices1@gmail.com"
+DEFAULT_TO = "alex@anoutdoorservices.com, niko@anoutdoorservices.com"
 
 
 def _soql(dataset, params):
