@@ -1248,7 +1248,9 @@ if __name__ == "__main__":
     if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not app.debug:
         from new_homeowners import run_weekly as run_homeowners
         from bid_scanner import run_daily as run_bid_scan
-        start_scheduler(run_sync, reconcile_daily_overhead, digest_fn=run_cash_digest,
+        # Cash digest now sent by AN Discovery's own scheduler (owners toggle in
+        # the Cash tile). jobber-app no longer sends it, avoids the 6am duplicate.
+        start_scheduler(run_sync, reconcile_daily_overhead, digest_fn=None,
                         mow_export_fn=run_mow_export,
                         pnl_reminder_fn=send_pnl_reminder,
                         marketing_refresh_fn=marketing.refresh,
