@@ -1,0 +1,35 @@
+{
+  "coefficients": {
+    "intercept": 1.099631238287718,
+    "log_total": -0.21415706280909938,
+    "repeat_client": 0.6380703275160429,
+    "discounted": 0.8446229605074445
+  },
+  "pct_value_bands": [
+    {
+      "max_pct": 0.001,
+      "win_rate": 0.5891,
+      "n": 623
+    },
+    {
+      "max_pct": 0.002,
+      "win_rate": 0.5714,
+      "n": 287
+    },
+    {
+      "max_pct": 0.005,
+      "win_rate": 0.4833,
+      "n": 300
+    },
+    {
+      "max_pct": 0.01,
+      "win_rate": 0.4341,
+      "n": 129
+    },
+    {
+      "max_pct": 1,
+      "win_rate": 0.3404,
+      "n": 235
+    }
+  ]
+}

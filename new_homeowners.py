@@ -147,12 +147,42 @@ def fetch_new_homeowners(since_sale_date):
     return leads, max_seen
 
 
-def _render_email(leads, since):
+def _render_email(leads, since, moves=None):
+    moves_html = ""
+    if moves:
+        move_rows = "".join(
+            f"<tr><td style='padding:5px 10px 5px 0'><b>{m['client_name']}</b></td>"
+            f"<td style='padding:5px 10px 5px 0'>{m['address']}</td>"
+            f"<td style='padding:5px 10px 5px 0;text-align:right'>${m['sale_price']:,.0f}</td>"
+            f"<td style='padding:5px 10px 5px 0'>{m['sale_date'][:10]}</td>"
+            f"<td style='padding:5px 0'>{m['buyer_name']}</td></tr>"
+            for m in moves
+        )
+        moves_html = f"""
+      <div style="background:#FBF6E9;border:1px solid #C29B2C;border-radius:6px;padding:12px 16px;margin:0 0 18px">
+        <h3 style="margin:0 0 4px;color:#9A7A1E">Client property sold ({len(moves)})</h3>
+        <p style="color:#676D89;margin:0 0 10px;font-size:13px">A current client's address showed up in the
+        sales records: expect churn, and the new owner inherits a yard we already know. Review before acting;
+        some are family transfers (check if the buyer shares the client's last name).</p>
+        <table style="border-collapse:collapse;font-size:14px">
+          <tr style="text-align:left;color:#676D89;font-size:12px;text-transform:uppercase">
+            <th style="padding:0 10px 6px 0">Client</th><th style="padding:0 10px 6px 0">Address</th>
+            <th style="padding:0 10px 6px 0">Sale price</th><th style="padding:0 10px 6px 0">Sale date</th>
+            <th style="padding:0 0 6px">Buyer</th></tr>
+          {move_rows}
+        </table>
+      </div>"""
+
+    # known-property leads first, badged
+    leads = sorted(leads, key=lambda x: not x.get("known_property"))
     parts = []
     for x in leads:
         dist = "" if x["miles"] is None else f"{x['miles']:.1f} mi"
+        badge = (" <span style='background:#E4F0E9;color:#2E7D4F;border-radius:99px;"
+                 "padding:1px 7px;font-size:11px;font-weight:600'>worked before</span>"
+                 if x.get("known_property") else "")
         parts.append(
-            f"<tr><td style='padding:5px 10px 5px 0'>{x['address']}</td>"
+            f"<tr><td style='padding:5px 10px 5px 0'>{x['address']}{badge}</td>"
             f"<td style='padding:5px 10px 5px 0'>{x['city']}</td>"
             f"<td style='padding:5px 10px 5px 0'>{x['buyer']}</td>"
             f"<td style='padding:5px 10px 5px 0;text-align:right'>${x['price']:,.0f}</td>"
@@ -162,6 +192,7 @@ def _render_email(leads, since):
     rows = "".join(parts)
     return f"""
     <div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#232850">
+      {moves_html}
       <h2 style="margin:0 0 4px">New homeowners in the service area</h2>
       <p style="color:#676D89;margin:0 0 16px">{len(leads)} closings newly recorded since {since[:10]}
       (county data lags ~5 weeks). Sorted nearest-first from the shop.
@@ -188,11 +219,27 @@ def run_weekly(dry_run=False):
         logger.error(f"Homeowners: county data pull failed: {e}")
         return {"status": "error", "message": str(e)}
 
+    # Client radar: flag current clients whose property just sold, and tag
+    # leads at addresses we've worked before. Failures degrade to a plain digest.
+    moves, known = [], set()
+    try:
+        from client_radar import (get_client_addresses, find_client_moves,
+                                  known_property_keys, addr_match_keys)
+        idx = get_client_addresses()
+        moves = find_client_moves(leads, client_index=idx)
+        known = known_property_keys(client_index=idx)
+        for lead in leads:
+            lead["known_property"] = bool(addr_match_keys(lead["address"], lead["zip"]) & known)
+    except Exception as e:
+        logger.error(f"Homeowners: client radar unavailable ({e}); plain digest.")
+        for lead in leads:
+            lead.setdefault("known_property", False)
+
     if not leads:
         logger.info("Homeowners: no new sales since last run; no email sent.")
         return {"status": "ok", "leads": 0, "sent": False}
 
-    html = _render_email(leads, since)
+    html = _render_email(leads, since, moves=moves)
     if dry_run:
         return {"status": "ok", "leads": len(leads), "sent": False, "html": html}
 

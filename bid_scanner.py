@@ -270,7 +270,29 @@ def scan_palatine():
 # --------------------------------------------------------------------------
 # Orchestration
 # --------------------------------------------------------------------------
-def _render_email(new_matches):
+def _render_awards_section(new_awards):
+    if not new_awards:
+        return ""
+    rows = "".join(
+        f"<tr><td style='padding:6px 12px 6px 0;vertical-align:top'>"
+        f"<a href='{a.get('url','')}' style='color:#232850;font-weight:600;text-decoration:none'>{a.get('contract_title','(contract)')}</a></td>"
+        f"<td style='padding:6px 12px 6px 0'>{a.get('agency','')}</td>"
+        f"<td style='padding:6px 12px 6px 0'>{a.get('winner') or '(see packet)'}</td>"
+        f"<td style='padding:6px 0;text-align:right;white-space:nowrap'>"
+        f"{('$' + format(a['amount'], ',.0f')) if a.get('amount') else ''}</td></tr>"
+        for a in new_awards
+    )
+    return (f"<h3 style='margin:22px 0 6px;color:#232850'>Recent contract awards ({len(new_awards)})</h3>"
+            f"<p style='color:#676D89;font-size:13px;margin:0 0 8px'>Who won municipal work nearby and at what"
+            f" price. Logged to the Bid Awards tab in the job-costing Sheet.</p>"
+            f"<table style='border-collapse:collapse;font-size:14px;width:100%'>"
+            f"<tr style='text-align:left;color:#676D89;font-size:11px;text-transform:uppercase'>"
+            f"<th style='padding:0 12px 6px 0'>Contract</th><th style='padding:0 12px 6px 0'>Agency</th>"
+            f"<th style='padding:0 12px 6px 0'>Winner</th><th style='padding:0 0 6px'>Amount</th></tr>"
+            f"{rows}</table>")
+
+
+def _render_email(new_matches, new_awards=None):
     core = [m for m in new_matches if m["in_area"]]
     wider = [m for m in new_matches if not m["in_area"]]
 
@@ -306,6 +328,7 @@ def _render_email(new_matches):
       since yesterday, filtered from the Daily Herald plus the Arlington Heights and Palatine village sites.</p>
       {section("In your service area", core)}
       {section("Wider suburban area", wider)}
+      {_render_awards_section(new_awards or [])}
       <p style="color:#9AA0B4;font-size:12px;margin-top:22px">Mount Prospect and Des Plaines block automated
       reads; their notices are caught via the Daily Herald. Titles/links are pulled straight from the sources,
       always confirm details on the agency page before bidding.</p>
@@ -330,21 +353,35 @@ def run_daily(dry_run=False):
     new_matches = [m for m in matches if m["id"] not in seen]
     new_matches.sort(key=lambda m: (not m["in_area"], m["source"], m["title"]))
 
-    if not new_matches:
+    # Mondays: also check for fresh contract awards (who won, at what price)
+    new_awards = []
+    if time.localtime().tm_wday == 0 or os.getenv("BID_FORCE_AWARDS") == "1":
+        try:
+            from award_tracker import run_weekly as awards_run
+            new_awards = (awards_run(dry_run=dry_run) or {}).get("new") or []
+        except Exception as e:
+            logger.error(f"Bids: award tracker failed ({e}); digest continues without it.")
+
+    if not new_matches and not new_awards:
         logger.info(f"Bids: {len(matches)} green matches, none new; no email.")
         return {"status": "ok", "matches": len(matches), "new": 0, "sent": False}
 
-    html = _render_email(new_matches)
+    html = _render_email(new_matches, new_awards=new_awards)
     if dry_run:
         return {"status": "ok", "matches": len(matches), "new": len(new_matches),
-                "sent": False, "html": html}
+                "new_awards": len(new_awards), "sent": False, "html": html}
 
     to = os.getenv("BID_SCANNER_TO", DEFAULT_TO)
-    subject = f"{len(new_matches)} new landscaping bid opportunit" + ("y" if len(new_matches) == 1 else "ies")
+    if new_matches:
+        subject = f"{len(new_matches)} new landscaping bid opportunit" + ("y" if len(new_matches) == 1 else "ies")
+        if new_awards:
+            subject += f" + {len(new_awards)} contract awards"
+    else:
+        subject = f"{len(new_awards)} municipal contract award" + ("" if len(new_awards) == 1 else "s")
     result = send_email(to, subject, html)
     if result:
         _save_seen(seen | {m["id"] for m in matches})
-        logger.info(f"Bids: emailed {len(new_matches)} new matches to {to}.")
+        logger.info(f"Bids: emailed {len(new_matches)} new matches + {len(new_awards)} awards to {to}.")
         return {"status": "ok", "matches": len(matches), "new": len(new_matches),
-                "sent": True, "to": to}
+                "new_awards": len(new_awards), "sent": True, "to": to}
     return {"status": "error", "message": "send_email failed (see log)"}

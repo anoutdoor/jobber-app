@@ -13,7 +13,7 @@ CT = pytz.timezone("America/Chicago")
 def start_scheduler(sync_fn, reconcile_fn, digest_fn=None, mow_export_fn=None,
                     pnl_reminder_fn=None, marketing_refresh_fn=None,
                     projections_refresh_fn=None, homeowners_fn=None,
-                    bid_scan_fn=None):
+                    bid_scan_fn=None, quote_risk_fn=None):
     global _scheduler
     if _scheduler and _scheduler.running:
         return
@@ -107,6 +107,16 @@ def start_scheduler(sync_fn, reconcile_fn, digest_fn=None, mow_export_fn=None,
             replace_existing=True,
         )
         logger.info("Scheduled daily bid-opportunity scan (6:15am CT).")
+
+    if quote_risk_fn:
+        _scheduler.add_job(
+            quote_risk_fn,
+            trigger=IntervalTrigger(hours=1),
+            id="hourly_quote_risk",
+            name="Hourly at-risk quote scoring",
+            replace_existing=True,
+        )
+        logger.info("Scheduled hourly at-risk quote scoring.")
 
     _scheduler.start()
 

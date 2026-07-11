@@ -250,6 +250,28 @@ def bids_now():
     return jsonify({k: v for k, v in result.items() if k != "html"})
 
 
+@app.route("/quote-risk-now")
+def quote_risk_now():
+    """Fire (or preview) the at-risk quote scorer. ?dry=1 scores without
+    advancing state or writing anything to Jobber."""
+    if "access_token" not in session:
+        return redirect(url_for("login"))
+    from quote_risk import run_hourly
+    dry = request.args.get("dry") == "1"
+    return jsonify(run_hourly(dry_run=dry))
+
+
+@app.route("/awards-now")
+def awards_now():
+    """Fire (or preview) the bid-award scan. ?dry=1 scans without appending
+    to the Bid Awards tab or marking awards as seen."""
+    if "access_token" not in session:
+        return redirect(url_for("login"))
+    from award_tracker import run_weekly
+    dry = request.args.get("dry") == "1"
+    return jsonify(run_weekly(dry_run=dry))
+
+
 @app.route("/pnl-reminder-now")
 def pnl_reminder_now():
     """Manually fire (or preview) the monthly P&L update reminder. Add ?dry=1 to
@@ -1250,13 +1272,15 @@ if __name__ == "__main__":
         from bid_scanner import run_daily as run_bid_scan
         # Cash digest now sent by AN Discovery's own scheduler (owners toggle in
         # the Cash tile). jobber-app no longer sends it, avoids the 6am duplicate.
+        from quote_risk import run_hourly as run_quote_risk
         start_scheduler(run_sync, reconcile_daily_overhead, digest_fn=None,
                         mow_export_fn=run_mow_export,
                         pnl_reminder_fn=send_pnl_reminder,
                         marketing_refresh_fn=marketing.refresh,
                         projections_refresh_fn=revenue_projections.refresh,
                         homeowners_fn=run_homeowners,
-                        bid_scan_fn=run_bid_scan)
+                        bid_scan_fn=run_bid_scan,
+                        quote_risk_fn=lambda: run_quote_risk(dry_run=False))
 
     import atexit
     atexit.register(stop_scheduler)
