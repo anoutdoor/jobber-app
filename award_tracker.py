@@ -71,6 +71,14 @@ CIVICCLERK_SITES = [
      re.compile(r"City Council", re.I)),
     ("hoffmanestatesil", "Village of Hoffman Estates",
      re.compile(r"Village Board", re.I)),
+    ("elkgroveil", "Village of Elk Grove Village",
+     re.compile(r"Village Board", re.I)),
+    ("bartlettil", "Village of Bartlett",
+     re.compile(r"Village Board", re.I)),
+    ("mundeleinil", "Village of Mundelein",
+     re.compile(r"Board of Trustees", re.I)),
+    ("wilmetteil", "Village of Wilmette",
+     re.compile(r"Village Board", re.I)),
 ]
 
 # Award/contract language required in the agenda item TITLE. Titles are
