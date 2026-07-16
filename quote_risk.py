@@ -365,6 +365,67 @@ def _score_quote(model, q):
     }
 
 
+SINGLE_QUOTE_QUERY = """
+query RiskQuote($id: EncodedId!) {
+  quote(id: $id) {
+    id
+    quoteNumber
+    quoteStatus
+    createdAt
+    client { id name createdAt }
+    property { address { street city province postalCode } }
+    amounts { total discountAmount }
+  }
+}
+"""
+
+NOTED_CAP = 500  # bound the remembered already-noted quote ids
+
+
+def _already_noted(state, quote_id):
+    return quote_id in (state.get("noted_ids") or [])
+
+
+def _remember_noted(state, quote_id):
+    noted = state.get("noted_ids") or []
+    noted.append(quote_id)
+    state["noted_ids"] = noted[-NOTED_CAP:]
+
+
+def score_and_flag_quote(quote_id, dry_run=False):
+    """Score ONE quote (webhook path: fires on quote creation, so the note
+    lands while the quote is still a draft). Dedupes against noted_ids in
+    the shared state so the hourly sweep won't note it a second time."""
+    access = read_tokens("jobber").get("access_token")
+    if not access:
+        return {"status": "error", "message": "no access token"}
+    d = graphql_request(SINGLE_QUOTE_QUERY, {"id": quote_id},
+                        access_token=access, _retry=False)
+    q = ((d or {}).get("data") or {}).get("quote")
+    if not q:
+        return {"status": "error", "message": f"quote {quote_id} not found"}
+
+    row = _score_quote(_load_model(), q)
+    if not row["at_risk"]:
+        logger.info(f"QuoteRisk[webhook]: quote #{row['quote_number']} scored "
+                    f"{row['win_prob']:.0%}, not at risk.")
+        return {"status": "ok", "flagged": False, **row}
+
+    state = _load_state()
+    if _already_noted(state, q["id"]):
+        return {"status": "ok", "flagged": False, "reason": "already noted", **row}
+
+    if dry_run:
+        return {"status": "ok", "flagged": False, "dry_run": True, **row}
+    res = flag_quote_in_jobber(q["id"], row["note_text"], access=access)
+    if res.get("ok"):
+        _remember_noted(state, q["id"])
+        _save_state(state)
+        logger.info(f"QuoteRisk[webhook]: flagged quote #{row['quote_number']} "
+                    f"({row['win_prob']:.0%} win, at creation).")
+    return {"status": "ok", "flagged": bool(res.get("ok")), **row}
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
@@ -403,15 +464,19 @@ def run_hourly(dry_run=True):
             logger.error(f"QuoteRisk: scoring failed for quote "
                          f"{q.get('quoteNumber')} ({e}); skipping.")
             continue
-        if row["at_risk"] and not dry_run:
-            flag_quote_in_jobber(row["quote_id"], row["note_text"], access=access)
+        if row["at_risk"] and not dry_run and not _already_noted(state, row["quote_id"]):
+            res = flag_quote_in_jobber(row["quote_id"], row["note_text"], access=access)
+            if res.get("ok"):
+                _remember_noted(state, row["quote_id"])
             flagged += 1
         results.append(row)
 
     if not dry_run:
         # Advance the mark to when this run started: the sentAt filter is
         # exclusive-after, so anything sent mid-run lands in the next hour.
-        _save_state({"last_sent_at": run_started})
+        # Preserve other state keys (noted_ids) rather than overwriting.
+        state["last_sent_at"] = run_started
+        _save_state(state)
 
     logger.info(f"QuoteRisk: scored {len(results)} quotes since {since}, "
                 f"{sum(r['at_risk'] for r in results)} at risk, "

@@ -250,6 +250,45 @@ def bids_now():
     return jsonify({k: v for k, v in result.items() if k != "html"})
 
 
+@app.route("/webhooks/jobber", methods=["POST"])
+def jobber_webhook():
+    """Jobber webhook receiver. On QUOTE_CREATE, score the quote immediately
+    so at-risk notes land while the quote is still a draft. HMAC-verified
+    against the app's client secret; responds fast and scores in a thread
+    (Jobber disables endpoints that answer slowly)."""
+    import base64
+    import hashlib
+    import hmac as hmac_mod
+    import json as json_mod
+    import threading
+
+    raw = request.get_data()
+    sig = request.headers.get("X-Jobber-Hmac-SHA256", "")
+    expected = base64.b64encode(
+        hmac_mod.new((CLIENT_SECRET or "").encode(), raw, hashlib.sha256).digest()
+    ).decode()
+    if not sig or not hmac_mod.compare_digest(sig, expected):
+        logger.warning("Jobber webhook: bad or missing HMAC signature; ignored.")
+        return jsonify({"ok": False}), 401
+
+    try:
+        event = (json_mod.loads(raw).get("data") or {}).get("webHookEvent") or {}
+    except (ValueError, AttributeError):
+        return jsonify({"ok": False}), 400
+    topic, item_id = event.get("topic"), event.get("itemId")
+
+    if topic in ("QUOTE_CREATE", "QUOTE_UPDATE") and item_id:
+        def _score():
+            try:
+                from quote_risk import score_and_flag_quote
+                score_and_flag_quote(item_id)
+            except Exception as e:
+                logger.error(f"Jobber webhook: scoring quote {item_id} failed: {e}")
+        threading.Thread(target=_score, daemon=True).start()
+
+    return jsonify({"ok": True})
+
+
 @app.route("/quote-risk-now")
 def quote_risk_now():
     """Fire (or preview) the at-risk quote scorer. ?dry=1 scores without
