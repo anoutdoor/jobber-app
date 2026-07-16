@@ -59,6 +59,18 @@ CIVICCLERK_SITES = [
      re.compile(r"Village Board|Committee of the Whole", re.I)),
     ("palatineil", "Village of Palatine",
      re.compile(r"Village Council", re.I)),
+    ("mountprospectil", "Village of Mount Prospect",
+     re.compile(r"Village Board", re.I)),
+    ("desplainesil", "City of Des Plaines",
+     re.compile(r"City Council", re.I)),
+    ("wheelingil", "Village of Wheeling",
+     re.compile(r"Village Board", re.I)),
+    ("buffalogroveil", "Village of Buffalo Grove",
+     re.compile(r"Village Board", re.I)),
+    ("prospectheightsil", "City of Prospect Heights",
+     re.compile(r"City Council", re.I)),
+    ("hoffmanestatesil", "Village of Hoffman Estates",
+     re.compile(r"Village Board", re.I)),
 ]
 
 # Award/contract language required in the agenda item TITLE. Titles are
