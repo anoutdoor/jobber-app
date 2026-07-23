@@ -141,8 +141,15 @@ def _save_state(state):
 # ---------------------------------------------------------------------------
 
 def _load_model():
-    with open(MODEL_PATH) as f:
-        return json.load(f)
+    # Prefer the weekly-refit model in the _riskmodel Sheet tab; fall back to
+    # the bundled snapshot. Lazy import avoids a circular import at load time.
+    try:
+        from quote_history import load_current_model
+        return load_current_model()
+    except Exception as e:
+        logger.warning(f"QuoteRisk: refit model unavailable ({e}); using bundled model.")
+        with open(MODEL_PATH) as f:
+            return json.load(f)
 
 
 def _win_probability(model, total, repeat_client, discounted):

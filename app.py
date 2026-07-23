@@ -1312,6 +1312,8 @@ if __name__ == "__main__":
         # Cash digest now sent by AN Discovery's own scheduler (owners toggle in
         # the Cash tile). jobber-app no longer sends it, avoids the 6am duplicate.
         from quote_risk import run_hourly as run_quote_risk
+        from quote_history import run_nightly as run_quote_history
+        from quote_history import run_weekly_refit as run_model_refit
         start_scheduler(run_sync, reconcile_daily_overhead, digest_fn=None,
                         mow_export_fn=run_mow_export,
                         pnl_reminder_fn=send_pnl_reminder,
@@ -1319,7 +1321,9 @@ if __name__ == "__main__":
                         projections_refresh_fn=revenue_projections.refresh,
                         homeowners_fn=run_homeowners,
                         bid_scan_fn=run_bid_scan,
-                        quote_risk_fn=lambda: run_quote_risk(dry_run=False))
+                        quote_risk_fn=lambda: run_quote_risk(dry_run=False),
+                        quote_history_fn=lambda: run_quote_history(dry_run=False),
+                        model_refit_fn=lambda: run_model_refit(dry_run=False))
 
     import atexit
     atexit.register(stop_scheduler)

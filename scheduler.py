@@ -13,7 +13,8 @@ CT = pytz.timezone("America/Chicago")
 def start_scheduler(sync_fn, reconcile_fn, digest_fn=None, mow_export_fn=None,
                     pnl_reminder_fn=None, marketing_refresh_fn=None,
                     projections_refresh_fn=None, homeowners_fn=None,
-                    bid_scan_fn=None, quote_risk_fn=None):
+                    bid_scan_fn=None, quote_risk_fn=None,
+                    quote_history_fn=None, model_refit_fn=None):
     global _scheduler
     if _scheduler and _scheduler.running:
         return
@@ -117,6 +118,26 @@ def start_scheduler(sync_fn, reconcile_fn, digest_fn=None, mow_export_fn=None,
             replace_existing=True,
         )
         logger.info("Scheduled hourly at-risk quote scoring.")
+
+    if quote_history_fn:
+        _scheduler.add_job(
+            quote_history_fn,
+            trigger=CronTrigger(hour=20, minute=45, timezone=CT),
+            id="nightly_quote_history",
+            name="Nightly decided-quote history append (8:45pm CT)",
+            replace_existing=True,
+        )
+        logger.info("Scheduled nightly quote-history append (8:45pm CT).")
+
+    if model_refit_fn:
+        _scheduler.add_job(
+            model_refit_fn,
+            trigger=CronTrigger(day_of_week="sun", hour=21, minute=0, timezone=CT),
+            id="weekly_model_refit",
+            name="Weekly risk-model refit (Sun 9pm CT)",
+            replace_existing=True,
+        )
+        logger.info("Scheduled weekly risk-model refit (Sun 9pm CT).")
 
     _scheduler.start()
 
