@@ -171,6 +171,78 @@ def fetch_plaid_balances():
     return accounts
 
 
+def _norm_transaction(t, accounts_by_id):
+    """Flatten a Plaid transaction to what the fuel tracker needs: identity,
+    which account/card, when, where, and how much. Plaid amounts are positive
+    for money OUT, which is what a spend tracker wants, so pass through as-is."""
+    acct = accounts_by_id.get(t.get("account_id")) or {}
+    pfc = t.get("personal_finance_category") or {}
+    loc = t.get("location") or {}
+    return {
+        "id": t.get("transaction_id") or "",
+        "accountId": t.get("account_id") or "",
+        "accountMask": acct.get("mask") or "",
+        "accountName": acct.get("name") or acct.get("official_name") or "",
+        "accountType": acct.get("type") or "",
+        "accountSubtype": acct.get("subtype") or "",
+        "date": t.get("date") or "",
+        "authorizedDate": t.get("authorized_date") or "",
+        "datetime": t.get("datetime") or "",
+        "name": t.get("name") or "",
+        "merchant": t.get("merchant_name") or "",
+        "amount": _to_float(t.get("amount")),
+        "currency": t.get("iso_currency_code") or "USD",
+        "pending": bool(t.get("pending")),
+        "accountOwner": t.get("account_owner") or "",
+        "channel": t.get("payment_channel") or "",
+        "categoryPrimary": pfc.get("primary") or "",
+        "categoryDetailed": pfc.get("detailed") or "",
+        "lat": loc.get("lat"),
+        "lon": loc.get("lon"),
+        "address": loc.get("address") or "",
+        "city": loc.get("city") or "",
+    }
+
+
+def fetch_plaid_transactions(days=35):
+    """Transactions across every connected bank for the last `days` days,
+    newest first. Stateless date-range pull (/transactions/get) so the caller
+    can upsert idempotently by transaction id; no cursor to persist. None if
+    nothing is connected."""
+    from datetime import date, timedelta
+
+    items = load_plaid_items()
+    if not items:
+        return None
+    days = max(1, min(int(days or 35), 90))
+    start = (date.today() - timedelta(days=days)).isoformat()
+    end = date.today().isoformat()
+    out = []
+    for it in items:
+        try:
+            offset = 0
+            while True:
+                data = _post(
+                    "/transactions/get",
+                    {
+                        "access_token": it["access_token"],
+                        "start_date": start,
+                        "end_date": end,
+                        "options": {"count": 500, "offset": offset, "include_personal_finance_category": True},
+                    },
+                )
+                accounts_by_id = {a.get("account_id"): a for a in (data.get("accounts") or [])}
+                txns = data.get("transactions") or []
+                out.extend(_norm_transaction(t, accounts_by_id) for t in txns)
+                offset += len(txns)
+                if not txns or offset >= int(data.get("total_transactions") or 0):
+                    break
+        except Exception:
+            logger.exception("plaid transactions fetch failed for one item; skipping it")
+    out.sort(key=lambda t: (t["date"], t["id"]), reverse=True)
+    return out
+
+
 def complete_link(link_token):
     """Poll a Hosted Link session; when finished, exchange the public token(s)
     and MERGE the bank(s) into the stored set, one entry per institution (newest
