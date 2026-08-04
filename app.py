@@ -532,6 +532,36 @@ def bank_balances():
     return _payroll_cors(jsonify({"ok": True, "source": "simplefin", "accounts": accounts, "errors": errors}))
 
 
+@app.route("/bank-transactions", methods=["GET", "OPTIONS"])
+def bank_transactions():
+    """Read-only Plaid transactions for the fuel spend tracker (an-discovery
+    pulls and filters these server-side). ?days=N bounds the window (default
+    35, max 90). Plaid only; no SimpleFIN fallback."""
+    if request.method == "OPTIONS":
+        return _payroll_cors(app.make_response(("", 204)))
+    if not _api_key_ok():
+        resp = jsonify({"error": "unauthorized"})
+        resp.status_code = 401
+        return _payroll_cors(resp)
+    try:
+        days = int(request.args.get("days") or 35)
+    except ValueError:
+        days = 35
+    try:
+        from financial.plaid_client import fetch_plaid_transactions
+        txns = fetch_plaid_transactions(days)
+    except Exception as e:
+        logger.exception("bank-transactions failed")
+        resp = jsonify({"error": "fetch_failed", "message": str(e)[:200]})
+        resp.status_code = 502
+        return _payroll_cors(resp)
+    if txns is None:
+        resp = jsonify({"error": "not_connected", "message": "No Plaid connection yet."})
+        resp.status_code = 409
+        return _payroll_cors(resp)
+    return _payroll_cors(jsonify({"ok": True, "source": "plaid", "days": days, "transactions": txns}))
+
+
 @app.route("/plaid-link-token", methods=["POST", "OPTIONS"])
 def plaid_link_token():
     """Create a Plaid Hosted Link session for the cash tracker to open."""
