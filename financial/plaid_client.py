@@ -193,6 +193,7 @@ def _norm_transaction(t, accounts_by_id):
         "amount": _to_float(t.get("amount")),
         "currency": t.get("iso_currency_code") or "USD",
         "pending": bool(t.get("pending")),
+        "pendingTransactionId": t.get("pending_transaction_id") or "",
         "accountOwner": t.get("account_owner") or "",
         "channel": t.get("payment_channel") or "",
         "categoryPrimary": pfc.get("primary") or "",
