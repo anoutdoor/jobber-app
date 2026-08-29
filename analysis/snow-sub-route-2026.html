@@ -1,0 +1,399 @@
+<title>The Park Ridge Loop</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+<style>
+  :root{
+    --paper:#EEF2F4; --surface:#FFFFFF; --surface-2:#F6F8F9;
+    --ink:#111A22; --ink-2:#3A4A57; --muted:#6B7C89;
+    --rule:#D2DBE0; --rule-soft:#E3EAEE;
+    --sodium:#B26A12;          /* streetlight amber - the accent */
+    --sodium-soft:#F6EBD9;
+    --plow:#1F4E6B;            /* deep municipal blue */
+    --go:#2C6249;              /* evergreen */
+    --stop:#8C2F39;            /* oxblood */
+    --shadow:0 1px 2px rgba(17,26,34,.06), 0 8px 24px -16px rgba(17,26,34,.28);
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --paper:#0D1419; --surface:#141E26; --surface-2:#18242D;
+      --ink:#E7EDF1; --ink-2:#B6C4CE; --muted:#8598A5;
+      --rule:#2A3A46; --rule-soft:#213039;
+      --sodium:#E3A551; --sodium-soft:#2E2415;
+      --plow:#69AACB; --go:#68B08D; --stop:#D98189;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -18px rgba(0,0,0,.8);
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#0D1419; --surface:#141E26; --surface-2:#18242D;
+    --ink:#E7EDF1; --ink-2:#B6C4CE; --muted:#8598A5;
+    --rule:#2A3A46; --rule-soft:#213039;
+    --sodium:#E3A551; --sodium-soft:#2E2415;
+    --plow:#69AACB; --go:#68B08D; --stop:#D98189;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -18px rgba(0,0,0,.8);
+  }
+
+  *{box-sizing:border-box}
+  body{
+    background:var(--paper); color:var(--ink);
+    font-family:"Source Serif 4",Georgia,"Times New Roman",serif;
+    font-size:17px; line-height:1.62;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1080px; margin:0 auto; padding:0 24px 96px;}
+  .col{max-width:66ch;}
+
+  h1,h2,h3,.lab,th,.num,.chip,.stat b{font-family:Archivo,"Helvetica Neue",Arial,sans-serif;}
+  .lab{
+    font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+    font-size:11.5px; font-weight:500; letter-spacing:.13em; text-transform:uppercase;
+    color:var(--muted);
+  }
+  .num{font-variant-numeric:tabular-nums;}
+
+  /* ---------- masthead ---------- */
+  header{padding:64px 0 40px; border-bottom:2px solid var(--ink);}
+  header .lab{color:var(--sodium)}
+  h1{
+    font-size:clamp(38px,6.2vw,64px); line-height:1.02; font-weight:700;
+    letter-spacing:-.028em; margin:14px 0 0; text-wrap:balance;
+  }
+  .dek{
+    font-size:clamp(18px,2.2vw,21px); color:var(--ink-2); margin:18px 0 0;
+    max-width:60ch; text-wrap:pretty;
+  }
+  .byline{
+    display:flex; flex-wrap:wrap; gap:8px 22px; margin-top:26px;
+  }
+  .byline span{font-family:"IBM Plex Mono",monospace; font-size:12px; color:var(--muted);}
+
+  /* ---------- verdict ---------- */
+  .verdict{
+    margin:40px 0 0; background:var(--surface); border:1px solid var(--rule);
+    border-left:4px solid var(--sodium); border-radius:3px;
+    padding:26px 28px; box-shadow:var(--shadow);
+  }
+  .verdict p{margin:10px 0 0; font-size:18px;}
+  .verdict p:first-of-type{margin-top:12px}
+  .verdict strong{font-weight:600; color:var(--ink)}
+
+  section{padding-top:60px;}
+  h2{
+    font-size:13px; font-weight:600; letter-spacing:.15em; text-transform:uppercase;
+    color:var(--ink); margin:0 0 6px; display:flex; align-items:baseline; gap:12px;
+  }
+  h2::after{content:""; flex:1; height:1px; background:var(--rule);}
+  .h2sub{font-size:clamp(24px,3.4vw,32px); font-family:Archivo,sans-serif; font-weight:600;
+    letter-spacing:-.02em; line-height:1.16; margin:14px 0 18px; text-wrap:balance;}
+  p{margin:0 0 16px}
+  a{color:var(--plow)}
+
+  /* ---------- route ladder ---------- */
+  .ladder{margin:26px 0 8px; border-top:1px solid var(--rule-soft);}
+  .leg{
+    display:grid; grid-template-columns:96px 1fr; gap:0 20px;
+    border-bottom:1px solid var(--rule-soft); position:relative;
+  }
+  .leg > .rail{
+    position:relative; padding:22px 0;
+    font-family:"IBM Plex Mono",monospace; font-size:12px; color:var(--muted);
+    text-align:right; font-variant-numeric:tabular-nums;
+  }
+  .leg > .rail::before{
+    content:""; position:absolute; right:-10px; top:0; bottom:0; width:2px;
+    background:var(--rule); 
+  }
+  .leg.stopnode > .rail::after{
+    content:""; position:absolute; right:-15px; top:28px; width:12px; height:12px;
+    border-radius:50%; background:var(--sodium); border:2px solid var(--surface);
+    box-shadow:0 0 0 1px var(--sodium);
+  }
+  .leg.transit > .rail::before{background:repeating-linear-gradient(to bottom,var(--rule) 0 5px,transparent 5px 10px);}
+  .leg .body{padding:20px 0 22px;}
+  .leg.transit .body{padding:12px 0; color:var(--muted); font-size:14.5px;
+    font-family:"IBM Plex Mono",monospace;}
+  .leg h3{font-family:Archivo,sans-serif; font-size:19px; font-weight:600; margin:0 0 4px;
+    letter-spacing:-.01em; display:flex; flex-wrap:wrap; align-items:baseline; gap:10px;}
+  .cnt{
+    font-family:"IBM Plex Mono",monospace; font-size:11px; font-weight:500;
+    background:var(--sodium-soft); color:var(--sodium); padding:3px 8px; border-radius:2px;
+    letter-spacing:.06em;
+  }
+  .leg .streets{margin:6px 0 0; font-size:15px; color:var(--ink-2); line-height:1.55;}
+  .leg .take{margin:8px 0 0; font-size:14.5px; color:var(--muted);}
+
+  /* ---------- tables ---------- */
+  .scroll{overflow-x:auto; margin:22px 0 8px; border:1px solid var(--rule); border-radius:3px;
+    background:var(--surface); box-shadow:var(--shadow);}
+  table{border-collapse:collapse; width:100%; font-size:14.5px;
+    font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums;}
+  th{
+    font-size:10.5px; letter-spacing:.11em; text-transform:uppercase; font-weight:600;
+    color:var(--muted); text-align:right; padding:13px 16px; white-space:nowrap;
+    border-bottom:1px solid var(--rule); background:var(--surface-2);
+  }
+  th:first-child,td:first-child{text-align:left}
+  td{padding:11px 16px; text-align:right; border-bottom:1px solid var(--rule-soft); white-space:nowrap;}
+  tbody tr:last-child td{border-bottom:0}
+  tr.total td{background:var(--surface-2); font-weight:600; color:var(--ink);
+    border-top:1px solid var(--rule);}
+  td.note{font-family:"Source Serif 4",serif; white-space:normal; color:var(--muted);
+    font-size:14px; text-align:left; min-width:220px;}
+  .tag{font-size:10px; letter-spacing:.08em; text-transform:uppercase; padding:2px 7px;
+    border-radius:2px; border:1px solid var(--rule); color:var(--muted);}
+  .tag.pr{color:var(--sodium); border-color:var(--sodium)}
+  .tag.mp{color:var(--plow); border-color:var(--plow)}
+  .tag.ni{color:var(--go); border-color:var(--go)}
+  .tag.gv{color:var(--stop); border-color:var(--stop)}
+  .pos{color:var(--go); font-weight:600}
+  .neg{color:var(--stop); font-weight:600}
+  caption{caption-side:bottom; text-align:left; padding:12px 16px; font-size:13px;
+    color:var(--muted); font-family:"Source Serif 4",serif; line-height:1.5;}
+
+  /* ---------- stat row ---------- */
+  .stats{display:grid; grid-template-columns:repeat(auto-fit,minmax(178px,1fr)); gap:1px;
+    background:var(--rule); border:1px solid var(--rule); border-radius:3px; margin:24px 0;
+    overflow:hidden;}
+  .stat{background:var(--surface); padding:20px 20px 18px;}
+  .stat .lab{display:block; margin-bottom:9px}
+  .stat b{display:block; font-size:30px; font-weight:600; letter-spacing:-.028em;
+    line-height:1; font-variant-numeric:tabular-nums; color:var(--ink);}
+  .stat small{display:block; margin-top:8px; font-size:13.5px; color:var(--muted); line-height:1.45;}
+
+  /* ---------- ask list ---------- */
+  ol.asks{list-style:none; padding:0; margin:24px 0 0; counter-reset:a;}
+  ol.asks li{
+    counter-increment:a; display:grid; grid-template-columns:38px 1fr; gap:0 16px;
+    padding:18px 0; border-bottom:1px solid var(--rule-soft);
+  }
+  ol.asks li::before{
+    content:counter(a,decimal-leading-zero);
+    font-family:"IBM Plex Mono",monospace; font-size:12px; font-weight:600; color:var(--sodium);
+    padding-top:4px;
+  }
+  ol.asks b{font-family:Archivo,sans-serif; font-weight:600; font-size:16.5px;
+    display:block; margin-bottom:3px;}
+  ol.asks span{font-size:15.5px; color:var(--ink-2);}
+  ol.asks .why{display:block; margin-top:6px; font-size:14px; color:var(--muted);}
+
+  .callout{
+    background:var(--surface-2); border:1px solid var(--rule); border-radius:3px;
+    padding:20px 24px; margin:26px 0; font-size:16px; color:var(--ink-2);
+  }
+  .callout .lab{display:block; margin-bottom:8px; color:var(--stop)}
+  .callout p:last-child{margin-bottom:0}
+
+  footer{margin-top:72px; padding-top:26px; border-top:2px solid var(--ink); color:var(--muted);
+    font-size:14px;}
+  footer p{margin:0 0 10px}
+
+  @media (max-width:620px){
+    body{font-size:16px}
+    .leg{grid-template-columns:64px 1fr; gap:0 16px}
+    .leg .rail{font-size:11px}
+  }
+  @media (prefers-reduced-motion:no-preference){
+    html{scroll-behavior:smooth}
+  }
+</style>
+
+<div class="wrap">
+
+<header>
+  <div class="lab">Subcontract evaluation · Winter 2026–27</div>
+  <h1>The Park&nbsp;Ridge Loop</h1>
+  <p class="dek">Twenty driveways offered as sub work at $60–$100 a visit, salt included. Here is what the route actually looks like, what it costs to run, and what your own price book says these houses are worth.</p>
+  <div class="byline">
+    <span>20 stops · 4 towns</span>
+    <span>Park Ridge · Niles · Mount Prospect · Glenview</span>
+    <span>Prepared 29 Aug 2026</span>
+  </div>
+</header>
+
+<div class="verdict">
+  <div class="lab">The short version</div>
+  <p><strong>The route is good. The price band is the problem.</strong> Fourteen of the twenty stops sit in a tight Park Ridge–Niles block you could run in about two hours — that is a real route, not a scattering of favors. Your own price book values the full list at <strong>$1,415 a push</strong>, or $70.75 a house. The offer's midpoint clears that; the offer's floor does not.</p>
+  <p>At $60 a house you are working <span class="neg">15% below your own retail</span> and carrying the salt. At $80 you are 13% above it. <strong>Do not accept a flat blanket rate across all twenty</strong> — price them house by house, or set the floor at $70.</p>
+</div>
+
+<section>
+  <h2>The route</h2>
+  <p class="h2sub">One clean loop out of the Des&nbsp;Plaines yard — and one leg that does not belong.</p>
+  <div class="col">
+    <p>The yard sits almost dead centre of these four towns, which is the single best thing about this offer. Run counter-clockwise and the whole list closes into a loop with no backtracking: Mount Prospect first while the plows are still on the arterials, then east across to Glenview, down through Niles, and finish in the Park Ridge grid closest to home.</p>
+  </div>
+
+  <div class="ladder">
+    <div class="leg transit"><div class="rail">10 min</div><div class="body">Yard (Des Plaines) → Mount Prospect</div></div>
+
+    <div class="leg stopnode"><div class="rail">~1h 05m</div><div class="body">
+      <h3>Mount Prospect <span class="cnt">4 stops</span></h3>
+      <p class="streets">6 &amp; 8 N Owen · 1 W Sunset · 602 S Owen</p>
+      <p class="take">Free money. 602 S Owen is on your existing Route&nbsp;6 — you already have 702 S Owen and 201 S Owen on the outreach list. The two N Owen houses are next door to each other. Nine minutes of driving for four stops.</p>
+    </div></div>
+
+    <div class="leg transit"><div class="rail">18 min</div><div class="body">Mount Prospect → west Glenview</div></div>
+
+    <div class="leg stopnode"><div class="rail">~40m</div><div class="body">
+      <h3>Glenview <span class="cnt">2 stops</span></h3>
+      <p class="streets">3246 Bellwood Ln · 2036 Sunset Ridge Rd</p>
+      <p class="take">The weak leg, and the one that contradicts a decision you already made. Two stops cost roughly 51 minutes all-in once transit is counted — still about $188/hr, so it is not a loser. But in August you put four Glenview clients on the do-not-pitch list with the note "holding Glenview this winter." Two subbed driveways is a thin reason to reopen that.</p>
+    </div></div>
+
+    <div class="leg transit"><div class="rail">12 min</div><div class="body">Glenview → Niles</div></div>
+
+    <div class="leg stopnode"><div class="rail">~50m</div><div class="body">
+      <h3>Niles <span class="cnt">3 stops</span></h3>
+      <p class="streets">8158 N Grand Ct · 8046 Merrill · 7616 N Oleander</p>
+      <p class="take">Grand Ct and Merrill are neighbours up around Oakton. Oleander sits well south, near Harlem and Touhy — which is convenient, because it drops you straight onto the east edge of Park Ridge.</p>
+    </div></div>
+
+    <div class="leg transit"><div class="rail">9 min</div><div class="body">Niles → Park Ridge</div></div>
+
+    <div class="leg stopnode"><div class="rail">~3h 05m</div><div class="body">
+      <h3>Park Ridge <span class="cnt">11 stops</span></h3>
+      <p class="streets">125, 203 &amp; 206 Elmore · 1017 Busse · 1012 Parkwood · 631 Wisner · 522 N Prospect · 1921 Elm · 602 S Chester · 1109 S Greenwood · 1624 S Fairview</p>
+      <p class="take">This is the actual asset. Eleven stops inside a three-mile-square city, with a genuine sub-cluster on Elmore — three houses, two of them across the street from each other — plus Busse and Parkwood a block away. Work the east side first (Elmore / Busse / Parkwood / Wisner / Prospect), then run south down Chester, Greenwood and Fairview and you are pointed at the yard.</p>
+    </div></div>
+
+    <div class="leg transit"><div class="rail">10 min</div><div class="body">Park Ridge → Yard</div></div>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><span class="lab">Loop, plow truck</span><b>6.1 hrs</b><small>Plow + one shoveler for walks, salt at every stop</small></div>
+    <div class="stat"><span class="lab">Loop, shovel crew</span><b>8.1 hrs</b><small>Two-man blower/shovel crew at your logged 12-min average</small></div>
+    <div class="stat"><span class="lab">Driving</span><b>3.0 hrs</b><small>38% of the day. Snow-adjusted at 1.4× dry time</small></div>
+    <div class="stat"><span class="lab">Units needed</span><b>2</b><small>To clear all twenty before a normal morning deadline</small></div>
+  </div>
+
+  <div class="callout">
+    <span class="lab">Read this before you plan crews</span>
+    <p>One unit cannot do this list by morning. Eight hours of shovel work starting after a storm ends at 2am puts your last Park Ridge driveway at 10am. Either you commit a second truck to this route, or you negotiate the deadline, or you drop the Glenview and Mount Prospect legs and run Park Ridge–Niles as a single tight 14-stop route in about 4½ hours.</p>
+  </div>
+</section>
+
+<section>
+  <h2>What your model says</h2>
+  <p class="h2sub">$1,415 a push. $70.75 a house.</p>
+  <div class="col">
+    <p>Your 2026–27 model is $45–$80 per push by driveway size plus $15 a visit for salt, all-or-nothing. Across the 71 names on your outreach tracker the average plow price lands at about $52, so a typical A&amp;N house prices at roughly $67 with salt.</p>
+    <p>This list should price a little higher than that average. Park Ridge's east side is full of older homes with detached garages and long side drives, and Sunset Ridge in Glenview is large-lot territory. The estimates below are keyed off neighbourhood housing stock, not measured driveways — treat them as a starting sheet you correct on the survey, not a quote.</p>
+  </div>
+
+  <div class="scroll">
+    <table>
+      <caption>Driveway sizes estimated from neighbourhood housing stock — these are planning numbers to be corrected on survey, not quotes.</caption>
+      <thead><tr>
+        <th>Address</th><th>Town</th><th>Plow</th><th>Salt</th><th>Your price</th><th class="note">Why this tier</th>
+      </tr></thead>
+      <tbody>
+        <tr><td>6 N Owen St</td><td><span class="tag mp">MP</span></td><td>$45</td><td>$15</td><td>$60</td><td class="note">Small ranch; adjacent pair with No. 8</td></tr>
+        <tr><td>8 N Owen St</td><td><span class="tag mp">MP</span></td><td>$45</td><td>$15</td><td>$60</td><td class="note">Small ranch; adjacent pair with No. 6</td></tr>
+        <tr><td>1 W Sunset Rd</td><td><span class="tag mp">MP</span></td><td>$45</td><td>$15</td><td>$60</td><td class="note">Downtown MP, small-to-medium drive</td></tr>
+        <tr><td>602 S Owen St</td><td><span class="tag mp">MP</span></td><td>$45</td><td>$15</td><td>$60</td><td class="note">Already your Route 6 street</td></tr>
+        <tr><td>3246 Bellwood Ln</td><td><span class="tag gv">GV</span></td><td>$65</td><td>$15</td><td>$80</td><td class="note">Larger west-Glenview lot</td></tr>
+        <tr><td>2036 Sunset Ridge Rd</td><td><span class="tag gv">GV</span></td><td>$80</td><td>$15</td><td>$95</td><td class="note">Sunset Ridge corridor — long drive, big lot</td></tr>
+        <tr><td>8158 N Grand Ct</td><td><span class="tag ni">NI</span></td><td>$45</td><td>$15</td><td>$60</td><td class="note">Niles ranch, short drive</td></tr>
+        <tr><td>8046 Merrill St</td><td><span class="tag ni">NI</span></td><td>$45</td><td>$15</td><td>$60</td><td class="note">Niles ranch, short drive</td></tr>
+        <tr><td>7616 N Oleander Ave</td><td><span class="tag ni">NI</span></td><td>$55</td><td>$15</td><td>$70</td><td class="note">Bungalow with side drive to rear garage</td></tr>
+        <tr><td>125 Elmore St</td><td><span class="tag pr">PR</span></td><td>$65</td><td>$15</td><td>$80</td><td class="note">Elmore cluster, larger frontage</td></tr>
+        <tr><td>203 Elmore St</td><td><span class="tag pr">PR</span></td><td>$65</td><td>$15</td><td>$80</td><td class="note">Detached garage, long side drive</td></tr>
+        <tr><td>206 Elmore St</td><td><span class="tag pr">PR</span></td><td>$65</td><td>$15</td><td>$80</td><td class="note">Detached garage, long side drive</td></tr>
+        <tr><td>631 Wisner St</td><td><span class="tag pr">PR</span></td><td>$65</td><td>$15</td><td>$80</td><td class="note">North Park Ridge, larger lot</td></tr>
+        <tr><td>1017 Busse Hwy</td><td><span class="tag pr">PR</span></td><td>$55</td><td>$15</td><td>$70</td><td class="note">Busse corridor, mid-size</td></tr>
+        <tr><td>1012 Parkwood Ave</td><td><span class="tag pr">PR</span></td><td>$55</td><td>$15</td><td>$70</td><td class="note">Block off Busse/Elmore</td></tr>
+        <tr><td>522 N Prospect St</td><td><span class="tag pr">PR</span></td><td>$55</td><td>$15</td><td>$70</td><td class="note">Central PR, older home</td></tr>
+        <tr><td>1921 Elm St</td><td><span class="tag pr">PR</span></td><td>$55</td><td>$15</td><td>$70</td><td class="note">Mid-size Park Ridge home</td></tr>
+        <tr><td>602 S Chester Ave</td><td><span class="tag pr">PR</span></td><td>$55</td><td>$15</td><td>$70</td><td class="note">South-central PR, mid-size</td></tr>
+        <tr><td>1109 S Greenwood Ave</td><td><span class="tag pr">PR</span></td><td>$55</td><td>$15</td><td>$70</td><td class="note">Arterial frontage, mid-size</td></tr>
+        <tr><td>1624 S Fairview Ave</td><td><span class="tag pr">PR</span></td><td>$55</td><td>$15</td><td>$70</td><td class="note">South Park Ridge, mid-size</td></tr>
+        <tr class="total"><td>20 stops</td><td></td><td>$1,115</td><td>$300</td><td>$1,415</td><td class="note">Average $70.75 per house per push</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="col">
+    <p>So the offer band brackets your own pricing almost exactly. That is the finding worth sitting with: <strong>a subcontract that pays you retail is unusual.</strong> Sub work normally runs 50–70% of retail because the general contractor carries sales, billing, and liability. If someone is handing you full retail, the money is being made back somewhere else in the terms — most often in the definition of a "visit" and in who eats the deep-snow events.</p>
+  </div>
+</section>
+
+<section>
+  <h2>The money</h2>
+  <p class="h2sub">Per push, and across a season.</p>
+
+  <div class="scroll">
+    <table>
+      <caption>Costs assume your crew rates ($28 + $23/hr) with 15% burden, fuel and truck wear, and roughly $6 of salt per driveway.</caption>
+      <thead><tr>
+        <th>Per push</th><th>$60 / house</th><th>$80 / house</th><th>$100 / house</th>
+      </tr></thead>
+      <tbody>
+        <tr><td>Revenue</td><td>$1,200</td><td>$1,600</td><td>$2,000</td></tr>
+        <tr><td>Cost — plow truck (6.1 hr)</td><td>$584</td><td>$584</td><td>$584</td></tr>
+        <tr><td>Gross margin</td><td class="pos">$616</td><td class="pos">$1,016</td><td class="pos">$1,416</td></tr>
+        <tr><td>Margin %</td><td>51%</td><td>63%</td><td>71%</td></tr>
+        <tr><td>Revenue per hour</td><td>$198</td><td>$264</td><td>$330</td></tr>
+        <tr class="total"><td>vs. your own price book</td><td class="neg">−15%</td><td class="pos">+13%</td><td class="pos">+41%</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="col">
+    <p>Run it as a shovel-and-blower crew instead of a plow truck and the day stretches to 8.1 hours, cost rises to $689, and the $80 case drops from $1,016 to $911 a push. Either way the per-push economics work. The season is where the range opens up.</p>
+  </div>
+
+  <div class="scroll">
+    <table>
+      <caption>Your outreach dashboard assumes 18 plowable events. Your own 2024–25 service log shows work on four dates. Plan against the middle column.</caption>
+      <thead><tr>
+        <th>Season at $80/house</th><th>Light — 10 events</th><th>Normal — 14 events</th><th>Heavy — 18 events</th>
+      </tr></thead>
+      <tbody>
+        <tr><td>Revenue</td><td>$16,000</td><td>$22,400</td><td>$28,800</td></tr>
+        <tr><td>Gross margin — plow truck</td><td>$10,158</td><td>$14,221</td><td>$18,284</td></tr>
+        <tr><td>Gross margin — shovel crew</td><td>$9,108</td><td>$12,751</td><td>$16,394</td></tr>
+        <tr class="total"><td>At the $60 floor instead</td><td>$6,158</td><td>$8,621</td><td>$11,084</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout">
+    <span class="lab">The exposure</span>
+    <p>Every number above is gross margin, before any standby cost and before a dedicated truck. If taking this route means adding a plow truck you would not otherwise run, a ten-event winter at the $60 floor returns about $6,200 against that fixed cost — and Chicago light winters are not rare. The deal is comfortable at $80 and thin at $60. That gap is the whole negotiation.</p>
+  </div>
+</section>
+
+<section>
+  <h2>Before you sign</h2>
+  <p class="h2sub">Ten questions, in the order they can hurt you.</p>
+  <ol class="asks">
+    <li><b>Is $60–$100 per push, or per storm?</b><span>A 10-inch storm on a 1-inch trigger is three or four pushes.</span><span class="why">If the rate is per storm event, your margin on the biggest nights goes negative. This is the single most important question on the list.</span></li>
+    <li><b>What happens above 4 and 6 inches?</b><span>Your own contract doubles at 4–6" and triples at 6+".</span><span class="why">A flat rate with no depth escalator quietly transfers all deep-snow risk to you.</span></li>
+    <li><b>What is the trigger depth — 1" or 2"?</b><span>A 1" trigger roughly doubles the number of events versus 2".</span><span class="why">Cuts both ways: more revenue, but also more nights where you turn out for a light dusting at full cost.</span></li>
+    <li><b>What is the completion deadline?</b><span>"Clear by 6am" and "within 24 hours of storm end" are different businesses.</span><span class="why">A hard morning deadline on all twenty forces a second truck. Your standing promise to your own clients is "clear by morning at 2 inches or more."</span></li>
+    <li><b>Who carries slip-and-fall liability?</b><span>Ask for the indemnity language in writing, plus the certificate of insurance requirements.</span><span class="why">Ice management liability on twenty properties you do not control is the largest uninsured downside in this deal.</span></li>
+    <li><b>How much sidewalk is included?</b><span>Front walk only, or the full public sidewalk frontage?</span><span class="why">Full public frontage on eleven Park Ridge lots is real added time you have not priced.</span></li>
+    <li><b>What are the payment terms, and what is their history?</b><span>Net-15, net-30, or per-event?</span><span class="why">Snow costs land in your worst cash months, and your ledger already carries past-due balances across the book. A net-60 general contractor turns a profitable route into a cash problem.</span></li>
+    <li><b>Is it all twenty, or can you cherry-pick?</b><span>Ask specifically whether you can take Park Ridge and Niles without Glenview.</span><span class="why">Fourteen tight stops at a good rate beats twenty at a blended rate that includes an outlier leg you already decided to skip.</span></li>
+    <li><b>Is there a non-solicit clause?</b><span>Can you sell these addresses mowing, cleanups, or aeration in the summer?</span><span class="why">This is the sleeper value. Twenty warm addresses in a town where you have no snow route at all is worth more than one winter of sub margin — but only if you are allowed to use it.</span></li>
+    <li><b>Is there a page two?</b><span>The note you sent is marked 1/2.</span><span class="why">Twenty stops is the analysis above. Thirty changes the crew math entirely.</span></li>
+  </ol>
+</section>
+
+<section>
+  <h2>Recommendation</h2>
+  <p class="h2sub">Take it — as a Park Ridge beachhead, not as twenty favours.</p>
+  <div class="col">
+    <p><strong>Counter at a per-house sheet with a $70 floor</strong>, using the table above as your opening position. It totals $1,470 against their $1,200–$2,000 band, so it sits comfortably inside what they have already said yes to, and it prices the Elmore and Sunset Ridge houses for what they actually are instead of blending them down.</p>
+    <p><strong>Ask to drop Glenview</strong>, or price those two at $80 and $95 specifically. Not because the leg loses money — it does not — but because you made a deliberate call in August to hold Glenview this winter, and two subbed driveways is not a good enough reason to walk it back.</p>
+    <p><strong>Treat the Mount Prospect four as a freebie you would have taken anyway.</strong> 602 S Owen is on Route 6. Those four stops cost you nine minutes of driving and slot into a route you are already building.</p>
+    <p><strong>And the real reason to say yes:</strong> you currently have six snow routes and not one of them touches Park Ridge or Niles. Eleven paid stops inside Park Ridge covers the cost of putting a truck in that town on storm nights. Every retail client you then sell in Park Ridge at your full $45–$80 plus salt is close to pure margin on a truck that is already there. Check the non-solicit language first — but if that door is open, the sub work is the cheapest market-entry you will ever be offered.</p>
+  </div>
+</section>
+
+<footer>
+  <p><strong>What is estimated here.</strong> Driveway sizes are inferred from neighbourhood housing stock, not measured — the per-house sheet is a planning position to correct on survey. Drive times are estimates from street geography, snow-adjusted at 1.4× dry conditions. Service times use the 8–25 minute range logged in your 2024–25 snow sheet, at a 12-minute average.</p>
+  <p><strong>Sources.</strong> Pricing tiers, salt rate, the 18-event assumption and the Glenview hold are from your A&amp;N Snow Outreach Tracker 2026–27. Depth escalators and the salt-per-visit structure are from your Snow Removal Service Description/Contract. Crew rates and burden are from <span style="font-family:'IBM Plex Mono',monospace;font-size:13px">financial_config.yaml</span>. Service times are from Snow Removal 24-25.</p>
+</footer>
+
+</div>
