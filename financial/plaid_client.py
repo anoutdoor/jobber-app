@@ -100,6 +100,38 @@ def create_hosted_link():
     return {"link_token": res.get("link_token"), "hosted_link_url": res.get("hosted_link_url")}
 
 
+def create_consent_links(products=("liabilities",), lifetime_seconds=7 * 86400):
+    """Update-mode Hosted Link sessions, one per connected bank login, asking
+    that login to consent to extra products (liabilities = statement data for
+    the cards). Nothing changes until the owner opens a link and goes through
+    the bank; the Item keeps its access token and account ids either way.
+    Returns [{institution, masks, hosted_link_url, link_token | error}]."""
+    out = []
+    for it in load_plaid_items():
+        fp = it.get("fingerprint") or ""
+        inst, _, masks = fp.partition("|")
+        row = {"institution": inst, "masks": [m for m in masks.split(",") if m]}
+        try:
+            res = _post(
+                "/link/token/create",
+                {
+                    "user": {"client_user_id": "anos-cash"},
+                    "client_name": "A&N Cash Position",
+                    "country_codes": ["US"],
+                    "language": "en",
+                    "access_token": it["access_token"],
+                    "additional_consented_products": list(products),
+                    "hosted_link": {"url_lifetime_seconds": int(lifetime_seconds)},
+                },
+            )
+            row["hosted_link_url"] = res.get("hosted_link_url")
+            row["link_token"] = res.get("link_token")
+        except Exception as e:
+            row["error"] = str(e)[:200]
+        out.append(row)
+    return out
+
+
 def _extract_public_tokens(res):
     """Every public token in a finished Hosted Link session (one per bank)."""
     tokens = []
@@ -169,6 +201,66 @@ def fetch_plaid_balances():
         except Exception:
             logger.exception("plaid balance fetch failed for one item; skipping it")
     return accounts
+
+
+def _norm_liability(c, accounts_by_id):
+    """One credit card's statement facts from /liabilities/get, flattened to
+    what the cash tracker keeps per card: when the last statement closed, what
+    it was, when it is due, and the last payment the bank has seen. The live
+    balance rides along so the caller can split it without a second call."""
+    acct = accounts_by_id.get(c.get("account_id")) or {}
+    bal = acct.get("balances") or {}
+    mask = acct.get("mask")
+    name = acct.get("name") or acct.get("official_name") or "Card"
+    if mask:
+        name = f"{name} ••{mask}"
+    return {
+        "id": c.get("account_id") or "",
+        "name": name,
+        "org": acct.get("official_name") or "",
+        "mask": mask or "",
+        "current": _to_float(bal.get("current")),
+        "limit": bal.get("limit"),
+        "lastStatementDate": c.get("last_statement_issue_date") or "",
+        "lastStatementBalance": _to_float(c.get("last_statement_balance")),
+        "minimumDue": _to_float(c.get("minimum_payment_amount")),
+        "nextDueDate": c.get("next_payment_due_date") or "",
+        "lastPaymentAmount": _to_float(c.get("last_payment_amount")),
+        "lastPaymentDate": c.get("last_payment_date") or "",
+        "isOverdue": bool(c.get("is_overdue")),
+    }
+
+
+def fetch_plaid_liabilities():
+    """Statement data for every credit card across the connected banks
+    (/liabilities/get). None if nothing is connected. Returns
+    {cards: [...], problems: [...]}: a bank login Plaid cannot read statements
+    for (most often: it has not consented to liabilities yet, which takes one
+    trip through Link) lands in `problems` with consentNeeded set, and the
+    other logins still come back. Balances stay on /accounts/balance/get."""
+    items = load_plaid_items()
+    if not items:
+        return None
+    cards, problems = [], []
+    for it in items:
+        fp = it.get("fingerprint") or ""
+        inst, _, masks = fp.partition("|")
+        try:
+            data = _post("/liabilities/get", {"access_token": it["access_token"]})
+        except Exception as e:
+            msg = str(e)[:200]
+            logger.warning("plaid liabilities failed for %s: %s", fp[:24], msg)
+            problems.append({
+                "institution": inst,
+                "masks": [m for m in masks.split(",") if m],
+                "error": msg,
+                "consentNeeded": "consent" in msg.lower(),
+            })
+            continue
+        accounts_by_id = {a.get("account_id"): a for a in (data.get("accounts") or [])}
+        for c in (data.get("liabilities") or {}).get("credit") or []:
+            cards.append(_norm_liability(c, accounts_by_id))
+    return {"cards": cards, "problems": problems}
 
 
 def _norm_transaction(t, accounts_by_id):
