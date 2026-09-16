@@ -10,6 +10,7 @@ Env: PLAID_CLIENT_ID, PLAID_SECRET, PLAID_ENV (production | sandbox).
 import json
 import logging
 import os
+import re
 
 import requests
 
@@ -231,9 +232,92 @@ def _norm_liability(c, accounts_by_id):
     }
 
 
+_PAYMENT_WORDS = re.compile(r"payment|pymt|autopay|thank you", re.I)
+
+
+def _is_card_payment(t):
+    """A payment onto a card: Plaid tags Capital One's as
+    LOAN_PAYMENTS_CREDIT_CARD_PAYMENT but files Chase's "Payment Thank You"
+    under a loan-disbursement category, so the name is the fallback. Money
+    in on a card is a negative amount; refunds and cash-back credits are
+    negative too and are deliberately NOT payments."""
+    if _to_float(t.get("amount")) >= 0:
+        return False
+    pfc = t.get("personal_finance_category") or {}
+    if (pfc.get("detailed") or "") == "LOAN_PAYMENTS_CREDIT_CARD_PAYMENT":
+        return True
+    return bool(_PAYMENT_WORDS.search(t.get("name") or ""))
+
+
+def _payments_since_close(access_token, cards):
+    """Per account, money that has come onto the card since its last
+    statement close: {account_id: (payments, credits)}. Payments are
+    transfers from the bank; credits are refunds and cash-back rewards, which
+    the issuer nets against the statement the same way (Capital One's
+    "remaining statement balance" does). /liabilities/get only carries the
+    LAST payment, and a statement paid in three or four transfers looked
+    mostly unpaid from it (2026-09-15: Spark Cash, four payments). Pulls the
+    item's transactions from the earliest close on; pending and posted are
+    deduped the way the fuel tracker does it. Any failure returns None so the
+    caller falls back to the last-payment figure; an empty dict means the pull
+    worked and nothing came in since the close."""
+    from datetime import date, timedelta
+
+    closes = {c["id"]: c["lastStatementDate"] for c in cards if c.get("lastStatementDate")}
+    if not closes:
+        return {}
+    start = min(closes.values())
+    # Never further back than 60 days: a stale close date on a dormant card
+    # must not turn this into a giant pull.
+    floor = (date.today() - timedelta(days=60)).isoformat()
+    if start < floor:
+        start = floor
+    end = date.today().isoformat()
+    try:
+        txns, offset = [], 0
+        while True:
+            data = _post(
+                "/transactions/get",
+                {
+                    "access_token": access_token,
+                    "start_date": start,
+                    "end_date": end,
+                    "options": {"count": 500, "offset": offset, "include_personal_finance_category": True},
+                },
+            )
+            page = data.get("transactions") or []
+            txns.extend(page)
+            offset += len(page)
+            if not page or offset >= int(data.get("total_transactions") or 0):
+                break
+    except Exception:
+        logger.exception("plaid transactions for card payments failed; using last payment only")
+        return None
+    posted_from_pending = {t.get("pending_transaction_id") for t in txns if t.get("pending_transaction_id")}
+    out = {}
+    for t in txns:
+        acct = t.get("account_id")
+        close = closes.get(acct)
+        if not close or (t.get("date") or "") <= close:
+            continue
+        if t.get("pending") and t.get("transaction_id") in posted_from_pending:
+            continue  # its posted twin is in the list too
+        amt = _to_float(t.get("amount"))
+        if amt >= 0:
+            continue  # a charge
+        pay, cred = out.get(acct, (0.0, 0.0))
+        if _is_card_payment(t):
+            pay += abs(amt)
+        else:
+            cred += abs(amt)
+        out[acct] = (pay, cred)
+    return out
+
+
 def fetch_plaid_liabilities():
     """Statement data for every credit card across the connected banks
-    (/liabilities/get). None if nothing is connected. Returns
+    (/liabilities/get), plus the payments made since each close (from the
+    transactions feed). None if nothing is connected. Returns
     {cards: [...], problems: [...]}: a bank login Plaid cannot read statements
     for (most often: it has not consented to liabilities yet, which takes one
     trip through Link) lands in `problems` with consentNeeded set, and the
@@ -258,8 +342,13 @@ def fetch_plaid_liabilities():
             })
             continue
         accounts_by_id = {a.get("account_id"): a for a in (data.get("accounts") or [])}
-        for c in (data.get("liabilities") or {}).get("credit") or []:
-            cards.append(_norm_liability(c, accounts_by_id))
+        item_cards = [_norm_liability(c, accounts_by_id) for c in (data.get("liabilities") or {}).get("credit") or []]
+        paid = _payments_since_close(it["access_token"], item_cards)
+        for c in item_cards:
+            pay, cred = (None, None) if paid is None else paid.get(c["id"], (0.0, 0.0))
+            c["paymentsSinceClose"] = None if pay is None else round(pay, 2)
+            c["creditsSinceClose"] = None if cred is None else round(cred, 2)
+        cards.extend(item_cards)
     return {"cards": cards, "problems": problems}
 
 
