@@ -532,6 +532,33 @@ def bank_balances():
     return _payroll_cors(jsonify({"ok": True, "source": "simplefin", "accounts": accounts, "errors": errors}))
 
 
+@app.route("/bank-liabilities", methods=["GET", "OPTIONS"])
+def bank_liabilities():
+    """Read-only credit card statement data (Plaid /liabilities/get) for the
+    cash tracker: last statement close and balance, due date, minimum due,
+    last payment. Plaid only. A login that has not consented to liabilities
+    is reported in `problems`, not treated as a failure."""
+    if request.method == "OPTIONS":
+        return _payroll_cors(app.make_response(("", 204)))
+    if not _api_key_ok():
+        resp = jsonify({"error": "unauthorized"})
+        resp.status_code = 401
+        return _payroll_cors(resp)
+    try:
+        from financial.plaid_client import fetch_plaid_liabilities
+        data = fetch_plaid_liabilities()
+    except Exception as e:
+        logger.exception("bank-liabilities failed")
+        resp = jsonify({"error": "fetch_failed", "message": str(e)[:200]})
+        resp.status_code = 502
+        return _payroll_cors(resp)
+    if data is None:
+        resp = jsonify({"error": "not_connected", "message": "No Plaid connection yet."})
+        resp.status_code = 409
+        return _payroll_cors(resp)
+    return _payroll_cors(jsonify({"ok": True, "source": "plaid", **data}))
+
+
 @app.route("/bank-transactions", methods=["GET", "OPTIONS"])
 def bank_transactions():
     """Read-only Plaid transactions for the fuel spend tracker (an-discovery
